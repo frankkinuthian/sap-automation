@@ -39,3 +39,40 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+
+# ========================================
+# SAP AUTOMATION - CREDENTIAL FILES
+# ========================================
+
+# Gmail OAuth2 credentials (downloaded from Google Cloud Console)
+gmail-credentials.json
+
+# Gmail OAuth2 tokens (generated after user authentication)
+gmail-token.json
+
+# WhatsApp Business API credentials (when implemented)
+whatsapp-credentials.json
+
+# SAP B1 connection credentials (when implemented)
+sap-credentials.json
+
+# AI service API keys files (when implemented)
+openai-credentials.json
+deepseek-credentials.json
+
+# Any backup or temporary credential files
+*-credentials.json.backup
+*-token.json.backup
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Database connection strings or keys
+database.json
+db-config.json
+
+# Test data with sensitive information
+test-emails-real.json
+customer-data-real.json

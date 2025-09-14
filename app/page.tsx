@@ -3,416 +3,415 @@
 import { useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { RefreshCw, AlertCircle, Mail, Users, Activity, Clock } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from 'sonner';
+
+type Status = 'received' | 'processing' | 'parsed' | 'completed' | 'failed';
+
+const statusVariant: Record<Status, 'default' | 'secondary' | 'destructive' | 'outline'> = {
+  received: 'secondary',
+  processing: 'secondary',
+  parsed: 'outline',
+  completed: 'default',
+  failed: 'destructive',
+};
 
 export default function Dashboard() {
-  const [selectedTab, setSelectedTab] = useState("overview");
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [activeTab, setActiveTab] = useState("overview");
+  const [lastSyncTime, setLastSyncTime] = useState<number | null>(
+    typeof window !== 'undefined' ? Number(localStorage.getItem('lastSyncTime')) || null : null
+  );
+  const [refreshTrigger, setRefreshTrigger] = useState(Date.now());
 
-  // Fetch data
+  const updateLastSyncTime = (time: number | null) => {
+    setLastSyncTime(time);
+    if (typeof window !== 'undefined') {
+      if (time) {
+        localStorage.setItem('lastSyncTime', time.toString());
+      } else {
+        localStorage.removeItem('lastSyncTime');
+      }
+    }
+  };
+
+  // Fetch data with loading states
   const messages = useQuery(api.messages.getAllMessages, { limit: 10 });
   const messageStats = useQuery(api.messages.getStats);
   const customerStats = useQuery(api.customers.getStats);
-  const recentCustomers = useQuery(api.customers.getRecentCustomers, {
-    limit: 5,
-  });
-  const systemLogs = useQuery(api.systemLogs.getRecentErrors, {
-    limit: 5,
-    hours: 24,
-  });
+  const recentCustomers = useQuery(api.customers.getRecentCustomers, { limit: 5 });
+  const systemLogs = useQuery(api.systemLogs.getRecentErrors, { limit: 5, hours: 24 });
 
   const formatDate = (timestamp: number) => {
     return new Date(timestamp).toLocaleString();
   };
 
-  const truncateText = (text: string, maxLength: number) => {
-    return text.length > maxLength
-      ? text.substring(0, maxLength) + "..."
-      : text;
+  const truncateText = (text: string, maxLength: number = 50) => {
+    if (!text) return '';
+    return text.length > maxLength ? `${text.substring(0, maxLength)}...` : text;
   };
 
   const triggerEmailSync = async () => {
+    setIsSyncing(true);
+    const syncStartTime = Date.now();
+    const toastId = toast.loading('Syncing emails...');
+    
     try {
       const response = await fetch("/api/email/sync", { method: "POST" });
       const result = await response.json();
 
       if (response.status === 401) {
-        // Not authenticated, redirect to auth
-        if (
-          confirm(
-            `${result.message}\n\nClick OK to authenticate with Gmail now.`,
-          )
-        ) {
-          window.open("/api/auth/gmail", "_blank");
-        }
+        toast.error('Authentication Required', {
+          description: result.message,
+          action: {
+            label: 'Authenticate',
+            onClick: () => window.open("/api/auth/gmail", "_blank")
+          },
+          duration: 10000
+        });
       } else if (response.ok) {
-        alert(`✅ ${result.message}`);
+        updateLastSyncTime(syncStartTime);
+        setRefreshTrigger(syncStartTime);
+        toast.success('Sync completed', {
+          description: result.message || 'Your emails have been synced successfully',
+          id: toastId
+        });
       } else {
-        alert(`❌ ${result.message || result.error || "Sync failed"}`);
+        throw new Error(result.message || "Sync failed");
       }
     } catch (error) {
-      alert(`❌ Email sync failed: ${error}`);
+      console.error("Sync error:", error);
+      toast.error('Sync failed', {
+        description: error instanceof Error ? error.message : 'An unknown error occurred',
+        id: toastId
+      });
+    } finally {
+      setIsSyncing(false);
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Header */}
-      <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div className="flex items-center">
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                SAP Automation Dashboard
-              </h1>
-              <span className="ml-4 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
-                Step 1: Customer Interaction Layer
-              </span>
-            </div>
-            <button
-              onClick={triggerEmailSync}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-            >
-              Sync Gmail
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Navigation Tabs */}
-        <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg mb-8">
-          {["overview", "messages", "customers", "logs"].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setSelectedTab(tab)}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                selectedTab === tab
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
-            </button>
-          ))}
-        </div>
-
-        {/* Overview Tab */}
-        {selectedTab === "overview" && (
-          <div className="space-y-6">
-            {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="bg-white p-6 rounded-lg shadow">
-                <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide">
-                  Total Messages
-                </h3>
-                <p className="mt-2 text-3xl font-bold text-gray-900">
-                  {messageStats?.total || 0}
-                </p>
-                <p className="mt-1 text-sm text-gray-600">
-                  Today: {messageStats?.todayCount || 0}
-                </p>
-              </div>
-
-              <div className="bg-white p-6 rounded-lg shadow">
-                <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide">
-                  Total Customers
-                </h3>
-                <p className="mt-2 text-3xl font-bold text-gray-900">
-                  {customerStats?.total || 0}
-                </p>
-                <p className="mt-1 text-sm text-gray-600">
-                  New this week: {customerStats?.newThisWeek || 0}
-                </p>
-              </div>
-
-              <div className="bg-white p-6 rounded-lg shadow">
-                <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide">
-                  Email Messages
-                </h3>
-                <p className="mt-2 text-3xl font-bold text-blue-600">
-                  {messageStats?.byChannel?.email || 0}
-                </p>
-                <p className="mt-1 text-sm text-gray-600">
-                  Processed: {messageStats?.byStatus?.completed || 0}
-                </p>
-              </div>
-
-              <div className="bg-white p-6 rounded-lg shadow">
-                <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide">
-                  System Status
-                </h3>
-                <p className="mt-2 text-3xl font-bold text-green-600">
-                  {systemLogs && systemLogs.length === 0 ? "Healthy" : "Issues"}
-                </p>
-                <p className="mt-1 text-sm text-gray-600">
-                  Errors: {systemLogs?.length || 0}
-                </p>
-              </div>
-            </div>
-
-            {/* Recent Activity */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-white rounded-lg shadow">
-                <div className="p-6 border-b border-gray-200">
-                  <h3 className="text-lg font-medium text-gray-900">
-                    Recent Messages
-                  </h3>
-                </div>
-                <div className="divide-y divide-gray-200">
-                  {messages?.slice(0, 5).map((message) => (
-                    <div key={message._id} className="p-4">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-medium text-gray-900">
-                          {message.customerName ||
-                            message.customerEmail ||
-                            "Unknown"}
-                        </p>
-                        <span
-                          className={`px-2 py-1 text-xs rounded-full ${
-                            message.status === "completed"
-                              ? "bg-green-100 text-green-800"
-                              : message.status === "failed"
-                                ? "bg-red-100 text-red-800"
-                                : "bg-yellow-100 text-yellow-800"
-                          }`}
-                        >
-                          {message.status}
-                        </span>
-                      </div>
-                      <p className="mt-1 text-sm text-gray-600">
-                        {truncateText(message.body, 100)}
-                      </p>
-                      <p className="mt-1 text-xs text-gray-500">
-                        {formatDate(message.receivedAt)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg shadow">
-                <div className="p-6 border-b border-gray-200">
-                  <h3 className="text-lg font-medium text-gray-900">
-                    Recent Customers
-                  </h3>
-                </div>
-                <div className="divide-y divide-gray-200">
-                  {recentCustomers?.map((customer) => (
-                    <div key={customer._id} className="p-4">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-medium text-gray-900">
-                          {customer.name}
-                        </p>
-                        <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">
-                          {customer.preferredChannel}
-                        </span>
-                      </div>
-                      <p className="mt-1 text-sm text-gray-600">
-                        {customer.email || customer.phone}
-                      </p>
-                      <p className="mt-1 text-xs text-gray-500">
-                        Messages: {customer.messageCount || 0}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Messages Tab */}
-        {selectedTab === "messages" && (
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="p-6 border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900">
-                All Messages
-              </h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Customer
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Channel
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Subject/Message
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Received
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {messages?.map((message) => (
-                    <tr key={message._id}>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">
-                            {message.customerName || "Unknown"}
-                          </p>
-                          <p className="text-sm text-gray-500">
-                            {message.customerEmail || message.customerPhone}
-                          </p>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`px-2 py-1 text-xs rounded-full ${
-                            message.channel === "email"
-                              ? "bg-blue-100 text-blue-800"
-                              : "bg-green-100 text-green-800"
-                          }`}
-                        >
-                          {message.channel}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <p className="text-sm text-gray-900">
-                          {message.subject || truncateText(message.body, 50)}
-                        </p>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`px-2 py-1 text-xs rounded-full ${
-                            message.status === "completed"
-                              ? "bg-green-100 text-green-800"
-                              : message.status === "failed"
-                                ? "bg-red-100 text-red-800"
-                                : "bg-yellow-100 text-yellow-800"
-                          }`}
-                        >
-                          {message.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {formatDate(message.receivedAt)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* Customers Tab */}
-        {selectedTab === "customers" && (
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="p-6 border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900">
-                Customer Directory
-              </h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Name
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Contact
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Preferred Channel
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Messages
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Last Contact
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {recentCustomers?.map((customer) => (
-                    <tr key={customer._id}>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <p className="text-sm font-medium text-gray-900">
-                          {customer.name}
-                        </p>
-                        {customer.company && (
-                          <p className="text-sm text-gray-500">
-                            {customer.company}
-                          </p>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {customer.email || customer.phone}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`px-2 py-1 text-xs rounded-full ${
-                            customer.preferredChannel === "email"
-                              ? "bg-blue-100 text-blue-800"
-                              : "bg-green-100 text-green-800"
-                          }`}
-                        >
-                          {customer.preferredChannel}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {customer.messageCount || 0}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {formatDate(customer.lastContactAt)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* Logs Tab */}
-        {selectedTab === "logs" && (
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="p-6 border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900">System Logs</h3>
-            </div>
-            <div className="divide-y divide-gray-200">
-              {systemLogs?.map((log) => (
-                <div key={log._id} className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center">
-                        <span
-                          className={`px-2 py-1 text-xs rounded-full mr-2 ${
-                            log.level === "error"
-                              ? "bg-red-100 text-red-800"
-                              : log.level === "warning"
-                                ? "bg-yellow-100 text-yellow-800"
-                                : "bg-green-100 text-green-800"
-                          }`}
-                        >
-                          {log.level}
-                        </span>
-                        <span className="px-2 py-1 text-xs bg-gray-100 text-gray-800 rounded-full">
-                          {log.source}
-                        </span>
-                      </div>
-                      <p className="mt-2 text-sm text-gray-900">
-                        {log.message}
-                      </p>
-                      <p className="mt-1 text-xs text-gray-500">
-                        {formatDate(log.timestamp)}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+  const renderLoadingSkeleton = () => (
+    <div className="space-y-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {[1, 2, 3, 4].map((i) => (
+          <Skeleton key={i} className="h-[110px] w-full rounded-xl" />
+        ))}
       </div>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+        <Skeleton className="col-span-4 h-[400px]" />
+        <Skeleton className="col-span-3 h-[400px]" />
+      </div>
+    </div>
+  );
+
+  const renderEmptyState = (message: string, icon: React.ReactNode) => (
+    <div className="flex flex-col items-center justify-center py-12 text-center">
+      <div className="mb-4 rounded-full bg-muted p-4">
+        {icon}
+      </div>
+      <h3 className="text-lg font-medium">No data available</h3>
+      <p className="text-muted-foreground text-sm">{message}</p>
+    </div>
+  );
+
+  const renderStatsCard = (title: string, value: string | number, icon: React.ReactNode, description?: string) => (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-medium">{title}</CardTitle>
+        <div className="text-muted-foreground">{icon}</div>
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold">{value}</div>
+        {description && <p className="text-muted-foreground text-xs">{description}</p>}
+      </CardContent>
+    </Card>
+  );
+
+  if (!messages || !messageStats || !customerStats || !recentCustomers || !systemLogs) {
+    return renderLoadingSkeleton();
+  }
+
+  return (
+    <div className="flex-1 space-y-4 p-4 pt-6 md:p-8">
+      <div className="flex items-center justify-between space-y-2">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
+          <p className="text-muted-foreground">
+            Monitor and manage your SAP automation workflow
+          </p>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Button onClick={triggerEmailSync} disabled={isSyncing}>
+            {isSyncing ? (
+              <>
+                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                Syncing...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Sync Now
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+
+      <Tabs defaultValue="overview" className="space-y-4" onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="messages">Messages</TabsTrigger>
+          <TabsTrigger value="customers">Customers</TabsTrigger>
+          <TabsTrigger value="logs">System Logs</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {renderStatsCard(
+              "Total Messages",
+              messageStats?.total || 0,
+              <Mail className="h-4 w-4" />,
+              `${messageStats?.byStatus?.received || 0} new messages today`
+            )}
+            {renderStatsCard(
+              "Active Customers",
+              customerStats?.total || 0,
+              <Users className="h-4 w-4" />,
+              `${customerStats?.newThisWeek || 0} new this week`
+            )}
+            {renderStatsCard(
+              "Message Status",
+              `${messageStats?.byStatus?.completed || 0} completed`,
+              <Activity className="h-4 w-4" />,
+              `${messageStats?.byStatus?.processing || 0} in progress`
+            )}
+            {renderStatsCard(
+              "Last Sync",
+              lastSyncTime ? new Date(lastSyncTime).toLocaleTimeString() : 'Never',
+              <Clock className="h-4 w-4" />,
+              lastSyncTime ? `at ${new Date(lastSyncTime).toLocaleDateString()}` : 'No sync data'
+            )}
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+            <Card className="col-span-4">
+              <CardHeader>
+                <CardTitle>Recent Messages</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {messages.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>From</TableHead>
+                        <TableHead>Subject</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Received</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {messages.map((message) => (
+                        <TableRow key={message._id}>
+                          <TableCell className="font-medium">
+                            {message.customerName || message.customerEmail || 'Unknown'}
+                          </TableCell>
+                          <TableCell>{truncateText(message.subject || 'No subject')}</TableCell>
+                          <TableCell>
+                            <Badge variant={statusVariant[message.status as Status] || 'outline'}>
+                              {message.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right text-sm text-muted-foreground">
+                            {formatDate(message.receivedAt)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  renderEmptyState(
+                    "No messages found. Try syncing your email account.",
+                    <Mail className="h-6 w-6" />
+                  )
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="col-span-3">
+              <CardHeader>
+                <CardTitle>Recent Activity</CardTitle>
+                <CardDescription>System logs and notifications</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {systemLogs.length > 0 ? (
+                  systemLogs.map((log) => (
+                    <div key={log._id} className="flex items-start space-x-3">
+                      <div className="flex-shrink-0 pt-0.5">
+                        {log.level === 'error' ? (
+                          <AlertCircle className="h-4 w-4 text-destructive" />
+                        ) : (
+                          <Activity className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium leading-none">
+                          {log.message}
+                        </p>
+                        <p className="text-muted-foreground text-xs">
+                          {formatDate(log.timestamp)}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  renderEmptyState(
+                    "No recent activity to display.",
+                    <Activity className="h-6 w-6" />
+                  )
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="messages" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>All Messages</CardTitle>
+                  <CardDescription>
+                    View and manage all processed messages
+                  </CardDescription>
+                </div>
+                <div className="flex space-x-2">
+                  <Button variant="outline" size="sm">
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Refresh
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {messages.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>From</TableHead>
+                      <TableHead>Subject</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Received</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {messages.map((message) => (
+                      <TableRow key={message._id}>
+                        <TableCell className="font-medium">
+                          {message.customerName || message.customerEmail || 'Unknown'}
+                        </TableCell>
+                        <TableCell>{truncateText(message.subject || 'No subject')}</TableCell>
+                        <TableCell>
+                          <Badge variant={statusVariant[message.status as Status] || 'outline'}>
+                            {message.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right text-sm text-muted-foreground">
+                          {formatDate(message.receivedAt)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                renderEmptyState(
+                  "No messages found. Try syncing your email account.",
+                  <Mail className="h-6 w-6" />
+                )
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="customers" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent Customers</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {recentCustomers.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Phone</TableHead>
+                      <TableHead>SAP Code</TableHead>
+                      <TableHead>Last Contact</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {recentCustomers.map((customer) => (
+                      <TableRow key={customer._id}>
+                        <TableCell className="font-medium">
+                          {customer.name || 'Unnamed Customer'}
+                        </TableCell>
+                        <TableCell>{customer.email || 'No email'}</TableCell>
+                        <TableCell>{customer.phone || 'No phone'}</TableCell>
+                        <TableCell>
+                          <Badge variant={customer.sapCustomerCode ? 'default' : 'outline'}>
+                            {customer.sapCustomerCode || 'No SAP code'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {new Date(customer.lastContactAt).toLocaleDateString()}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                renderEmptyState(
+                  "No recent customers to display.",
+                  <Users className="h-6 w-6" />
+                )
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="logs" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>System Logs</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {systemLogs.length > 0 ? (
+                <div className="space-y-4">
+                  {Object.entries(messageStats?.byStatus || {}).map(([status, count]) => (
+                    <div key={status} className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground capitalize">{status}</span>
+                      <Badge variant={status === 'completed' ? 'default' : 'secondary'}>
+                        {count as number}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                renderEmptyState(
+                  "No system logs to display.",
+                  <Activity className="h-6 w-6" />
+                )
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

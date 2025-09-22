@@ -1,13 +1,17 @@
 import { inngest } from "./client";
-import { aiProcessingAgent } from "./ai-processing-agent";
+// import { aiProcessingAgent } from "./ai-processing-agent"; // Not used with direct OpenAI service
 import { excelParserAgent } from "./excel-parser-agent";
 import { excelProcessor } from "@/lib/files/excel-processor";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { getAIConfig } from "@/lib/ai/config";
 
 // Initialize Convex client
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+
+// Get AI configuration
+const config = getAIConfig();
 
 // Helper function to handle OpenAI API errors consistently
 async function handleOpenAIError(
@@ -92,7 +96,8 @@ export const processMessage = inngest.createFunction(
     retries: 3,
     onFailure: async ({ event, error }) => {
       try {
-        const messageId = (event as any).data?.messageId;
+        const messageId = (event as { data?: { messageId?: string } }).data
+          ?.messageId;
         if (messageId) {
           // Handle final failure - update message status
           await convex.mutation(api.messages.updateStatus, {
@@ -122,27 +127,46 @@ export const processMessage = inngest.createFunction(
   { event: "ai/process.message" },
   async ({ event, step }) => {
     const { messageId } = event.data;
+    // console.log(
+    //   "🟡 Inngest processMessage function started for messageId:",
+    //   messageId
+    // );
 
     // Validate messageId
     if (!messageId || typeof messageId !== "string") {
+      // console.log("🔴 Invalid messageId provided:", messageId);
       throw new Error("Invalid messageId provided in event data");
     }
+    // console.log("🟢 MessageId validation passed:", messageId);
 
     // Get message from database
     const message = await step.run("get-message", async () => {
+      // console.log("🟡 Fetching message from database:", messageId);
       const msg = await convex.query(api.messages.getById, {
         id: messageId as Id<"messages">,
       });
 
       if (!msg) {
+        // console.log("🔴 Message not found in database:", messageId);
         throw new Error(`Message ${messageId} not found in database`);
       }
 
+      // console.log("🟢 Message found, status:", msg.status);
       return msg;
     });
 
     // Check if message is in correct status for processing
-    if (message.status !== "received") {
+    // console.log(
+    //   "🟡 Checking message status:",
+    //   message.status,
+    //   "expected: received"
+    // );
+    if (message.status !== "received" && message.status !== "processing") {
+      // console.log(
+      //   "🔴 Skipping processing - message status is",
+      //   message.status,
+      //   "not 'received'"
+      // );
       await step.run("log-skip", async () => {
         return await convex.mutation(api.systemLogs.create, {
           level: "info",
@@ -159,6 +183,7 @@ export const processMessage = inngest.createFunction(
         currentStatus: message.status,
       };
     }
+    // console.log("🟢 Message status check passed - proceeding with processing");
 
     // Update status to processing
     await step.run("update-status-processing", async () => {
@@ -186,29 +211,72 @@ export const processMessage = inngest.createFunction(
     });
 
     // Run the AI processing agent with actual OpenAI integration and error handling
-    const result = await step.run("process-with-ai-agent", async () => {
+    const result = await step.run("process-with-direct-openai", async () => {
       try {
-        return await aiProcessingAgent.run(`Analyze this customer message and extract structured business data:
+        // console.log(
+        //   "🤖 Starting direct OpenAI analysis for message:",
+        //   messageId
+        // );
 
-FROM: ${message.customerEmail || message.customerPhone || "Unknown"} ${
-          message.customerName ? `(${message.customerName})` : ""
+        // Import the direct OpenAI service
+        // console.log("🟡 Importing direct OpenAI service...");
+        const { analyzeMessageWithOpenAI } = await import(
+          "@/lib/ai/direct-openai-service"
+        );
+        // console.log("🟢 Direct OpenAI service imported successfully");
+
+        // console.log("🟡 Calling analyzeMessageWithOpenAI...");
+        const analysisResult = await analyzeMessageWithOpenAI(
+          messageId,
+          message.body || "",
+          message.customerEmail || "",
+          message.customerName,
+          message.subject
+        );
+        // console.log("🟢 Analysis result received:", analysisResult.success);
+
+        if (analysisResult.success) {
+          // Save the analysis results to the database
+          await convex.mutation(api.messages.updateStatus, {
+            messageId: messageId as Id<"messages">,
+            status: "parsed",
+            processedAt: Date.now(),
+            aiParsedData: {
+              processedAt: Date.now(),
+              processingVersion: "1.0",
+              aiModel: config.openai.model,
+              confidenceScore: analysisResult.confidenceScore,
+              category: analysisResult.category,
+              intent: analysisResult.extractedData.intent,
+              priority: analysisResult.priority,
+              customer: analysisResult.extractedData.customer,
+              products: analysisResult.extractedData.products,
+              businessContext: analysisResult.extractedData.businessContext,
+              flags: analysisResult.extractedData.flags,
+              urgencyKeywords: analysisResult.extractedData.urgencyKeywords,
+              rawResponses: {
+                openai: {
+                  model: config.openai.model,
+                  timestamp: Date.now(),
+                  result: analysisResult,
+                },
+              },
+            },
+          });
+
+          // console.log(
+          //   "✅ Direct OpenAI analysis completed and saved successfully"
+          // );
         }
-CHANNEL: ${message.channel}
-SUBJECT: ${message.subject || "No subject"}
-RECEIVED: ${new Date(message.receivedAt).toISOString()}
 
-MESSAGE BODY:
-${message.body}
-
-Please analyze this message thoroughly and use the analyze-message tool to save the extracted data. Focus on:
-1. Categorizing the business intent (quote request, order inquiry, etc.)
-2. Extracting customer information and contact details
-3. Identifying products, quantities, and specifications
-4. Determining priority based on urgency keywords and deadlines
-5. Extracting business context like vessel information and delivery requirements
-
-Message ID to process: ${messageId}`);
+        return analysisResult;
       } catch (error) {
+        console.error("🔴 Direct OpenAI analysis failed:", error);
+        console.error("🔴 Error details:", {
+          name: error instanceof Error ? error.name : "Unknown",
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
         await handleOpenAIError(error, messageId, "message processing");
       }
     });
@@ -230,9 +298,11 @@ export const processBatch = inngest.createFunction(
   { event: "ai/process.batch" },
   async ({ event, step }) => {
     const { messageIds, batchSize = 5, priority = "medium" } = event.data;
+    // console.log("🟡 Batch processor started with messageIds:", messageIds);
 
     // Validate input
     if (!Array.isArray(messageIds) || messageIds.length === 0) {
+      // console.log("🔴 Invalid messageIds array:", messageIds);
       throw new Error("messageIds must be a non-empty array");
     }
 
@@ -274,12 +344,27 @@ export const processBatch = inngest.createFunction(
         async () => {
           const batchPromises = batch.map(async (messageId) => {
             try {
+              // console.log(
+              //   "🟡 Sending ai/process.message event for:",
+              //   messageId
+              // );
               const eventResult = await inngest.send({
                 name: "ai/process.message",
                 data: { messageId },
               });
+              // console.log(
+              //   "🟢 Event sent for messageId:",
+              //   messageId,
+              //   "eventId:",
+              //   eventResult.ids[0]
+              // );
               return { messageId, success: true, eventId: eventResult.ids[0] };
             } catch (error) {
+              // console.log(
+              //   "🔴 Failed to send event for messageId:",
+              //   messageId,
+              //   error
+              // );
               return {
                 messageId,
                 success: false,
@@ -407,7 +492,8 @@ export const processExcelAttachment = inngest.createFunction(
     retries: 3,
     onFailure: async ({ event, error }) => {
       try {
-        const messageId = (event as any).data?.messageId;
+        const messageId = (event as { data?: { messageId?: string } }).data
+          ?.messageId;
         if (messageId) {
           // Handle final failure - update message status
           await convex.mutation(api.messages.updateStatus, {
@@ -569,7 +655,8 @@ export const processExcelData = inngest.createFunction(
     retries: 3,
     onFailure: async ({ event, error }) => {
       try {
-        const messageId = (event as any).data?.messageId;
+        const messageId = (event as { data?: { messageId?: string } }).data
+          ?.messageId;
         if (messageId) {
           // Handle final failure - update message status
           await convex.mutation(api.messages.updateStatus, {

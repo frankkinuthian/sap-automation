@@ -6,9 +6,10 @@ import { getAIConfig } from "@/lib/ai/config";
 
 export async function POST(request: NextRequest) {
   try {
+    // console.log("🔵 AI Process API called");
     // Validate configuration first
     const config = getAIConfig();
-    console.log("AI Processing API - Configuration validated");
+    // console.log("🟢 AI Processing API - Configuration validated");
 
     const {
       messageIds,
@@ -16,6 +17,13 @@ export async function POST(request: NextRequest) {
       priority = "medium",
       processAll = false,
     } = await request.json();
+
+    // console.log("🔵 Request data:", {
+    //   messageIds,
+    //   batchSize,
+    //   priority,
+    //   processAll,
+    // });
 
     let messagesToProcess = messageIds;
 
@@ -55,6 +63,10 @@ export async function POST(request: NextRequest) {
 
     // Trigger batch processing
     try {
+      // console.log(
+      //   "🟡 Sending Inngest event ai/process.batch with messageIds:",
+      //   messagesToProcess
+      // );
       const eventResult = await inngest.send({
         name: "ai/process.batch",
         data: {
@@ -63,6 +75,10 @@ export async function POST(request: NextRequest) {
           priority,
         },
       });
+      // console.log(
+      //   "🟢 Inngest event sent successfully, eventIds:",
+      //   eventResult.ids
+      // );
 
       return NextResponse.json({
         success: true,

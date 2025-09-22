@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
+import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import {
@@ -24,6 +25,7 @@ import {
   RefreshCw,
   AlertCircle,
   ExternalLink,
+  Home,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
@@ -33,7 +35,18 @@ export default function MessageDetailPage() {
   const router = useRouter();
   const id = params?.id as string;
   const [isProcessing, setIsProcessing] = useState(false);
-  const [aiStatus, setAiStatus] = useState<any>(null);
+  const [aiStatus, setAiStatus] = useState<{
+    status?: {
+      inngest?: {
+        status: string;
+      };
+    };
+    configuration?: Record<string, unknown>;
+  } | null>(null);
+  // const [lastRefresh, setLastRefresh] = useState(Date.now()); // Removed - not used
+
+  // Initialize Convex client for polling
+  const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
   const message = useQuery(
     api.messages.getById,
@@ -62,10 +75,12 @@ export default function MessageDetailPage() {
   const handleTriggerProcessing = async () => {
     if (!message) return;
 
+    // console.log("🔵 Process with AI button clicked for message:", message._id);
     setIsProcessing(true);
     const toastId = toast.loading("Triggering AI processing...");
 
     try {
+      // console.log("🔵 Calling AI process API with messageId:", message._id);
       const response = await fetch("/api/ai/process", {
         method: "POST",
         headers: {
@@ -76,14 +91,53 @@ export default function MessageDetailPage() {
         }),
       });
 
+      // console.log("🔵 AI process API response status:", response.status);
       const result = await response.json();
+      // console.log("🔵 AI process API result:", result);
 
       if (result.success) {
         toast.success("AI processing triggered successfully", { id: toastId });
-        // Refresh the page after a short delay to show updated data
+
+        // Show progress message
+        toast.info("Processing in progress...", {
+          description:
+            "This may take 10-30 seconds. The page will refresh automatically.",
+          duration: 5000,
+        });
+
+        // Poll for status updates every 3 seconds
+        const pollInterval = setInterval(async () => {
+          // Polling for status updates - no need to set refresh state
+
+          // Check if message status has changed
+          try {
+            const updatedMessage = await convex.query(api.messages.getById, {
+              id: id as Id<"messages">,
+            });
+
+            if (updatedMessage && updatedMessage.status !== "processing") {
+              clearInterval(pollInterval);
+              if (updatedMessage.status === "parsed") {
+                toast.success("AI processing completed!", {
+                  description: "Message has been successfully analyzed.",
+                });
+              } else if (updatedMessage.status === "failed") {
+                toast.error("AI processing failed", {
+                  description: "Please check the system logs for details.",
+                });
+              }
+              // Refresh to show updated data
+              setTimeout(() => window.location.reload(), 1000);
+            }
+          } catch (error) {
+            console.error("Error polling for status:", error);
+          }
+        }, 3000);
+
+        // Stop polling after 2 minutes
         setTimeout(() => {
-          window.location.reload();
-        }, 2000);
+          clearInterval(pollInterval);
+        }, 120000);
       } else {
         const errorMessage = result.message || result.error || "Unknown error";
         toast.error("Failed to trigger AI processing", {
@@ -168,11 +222,20 @@ export default function MessageDetailPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <Link
-            href="/messages"
-            className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
+            href="/"
+            className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
-            <ArrowLeft className="mr-1 h-4 w-4" /> Back
+            <Home className="mr-1 h-4 w-4" />
+            Dashboard
           </Link>
+          <div className="text-muted-foreground">/</div>
+          <Link
+            href="/messages"
+            className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Messages
+          </Link>
+          <div className="text-muted-foreground">/</div>
           <h2 className="text-3xl font-bold tracking-tight">Message Details</h2>
         </div>
         <div className="flex items-center space-x-2">
@@ -184,8 +247,10 @@ export default function MessageDetailPage() {
                 onClick={handleTriggerProcessing}
                 disabled={
                   isProcessing ||
-                  (aiStatus &&
-                    aiStatus.status?.inngest?.status === "disconnected")
+                  Boolean(
+                    aiStatus &&
+                      aiStatus.status?.inngest?.status === "disconnected"
+                  )
                 }
               >
                 {isProcessing ? (
@@ -241,6 +306,9 @@ export default function MessageDetailPage() {
                       : "outline"
                   }
                 >
+                  {message.status === "processing" && (
+                    <RefreshCw className="mr-1 h-3 w-3 animate-spin" />
+                  )}
                   {message.status}
                 </Badge>
                 {message.archivedAt && (
@@ -304,7 +372,7 @@ export default function MessageDetailPage() {
               <CardContent className="space-y-3">
                 <p className="text-sm text-orange-700">
                   The Inngest dev server is not running. AI processing functions
-                  won't execute until it's started.
+                  won&apos;t execute until it&apos;s started.
                 </p>
                 <div className="flex flex-col gap-2">
                   <Button

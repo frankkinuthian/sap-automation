@@ -12,6 +12,15 @@ const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 // Get AI configuration
 const config = getAIConfig();
 
+// Debug: Log configuration (without exposing the full API key)
+console.log("Excel Parser Agent - Config loaded:", {
+  hasApiKey: !!config.openai.apiKey,
+  apiKeyPrefix: config.openai.apiKey
+    ? config.openai.apiKey.substring(0, 10) + "..."
+    : "none",
+  model: config.openai.model,
+});
+
 // Zod schema for shipping items extracted from Excel
 const excelItemSchema = z.object({
   itemCode: z
@@ -369,7 +378,10 @@ SAP CONVERSION REQUIREMENTS:
 
 Always use the parse-excel-attachment tool to save your analysis results.`,
 
-  model: openai("gpt-4o") as any,
+  // model: openai("gpt-4o", {
+  //   apiKey: config.openai.apiKey,
+  // }),
+  model: undefined, // Not used - using direct OpenAI service instead
 
   tools: [parseExcelTool],
 });

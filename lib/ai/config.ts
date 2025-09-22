@@ -38,6 +38,14 @@ export const getAIConfig = (): AIConfig => {
     );
   }
 
+  // Debug: Log environment variable status (without exposing values)
+  console.log("AI Config - Environment check:", {
+    NODE_ENV: process.env.NODE_ENV,
+    hasOpenAIKey: !!process.env.OPENAI_API_KEY,
+    openAIKeyLength: process.env.OPENAI_API_KEY?.length || 0,
+    openAIKeyPrefix: process.env.OPENAI_API_KEY?.substring(0, 10) || "none",
+  });
+
   return {
     openai: {
       apiKey: process.env.OPENAI_API_KEY!,

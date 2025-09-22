@@ -5,29 +5,54 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { RefreshCw, AlertCircle, Mail, Users, Activity, Clock } from "lucide-react";
+import {
+  RefreshCw,
+  AlertCircle,
+  Mail,
+  Users,
+  Activity,
+  Clock,
+} from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { toast } from 'sonner';
+import { toast } from "sonner";
 
-type Status = 'received' | 'processing' | 'parsed' | 'completed' | 'failed';
+type Status = "received" | "processing" | "parsed" | "completed" | "failed";
 
-const statusVariant: Record<Status, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  received: 'secondary',
-  processing: 'secondary',
-  parsed: 'outline',
-  completed: 'default',
-  failed: 'destructive',
+const statusVariant: Record<
+  Status,
+  "default" | "secondary" | "destructive" | "outline"
+> = {
+  received: "secondary",
+  processing: "secondary",
+  parsed: "outline",
+  completed: "default",
+  failed: "destructive",
 };
 
 export default function Dashboard() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
   const [lastSyncTime, setLastSyncTime] = useState<number | null>(
-    typeof window !== 'undefined' ? Number(localStorage.getItem('lastSyncTime')) || null : null
+    typeof window !== "undefined"
+      ? Number(localStorage.getItem("lastSyncTime")) || null
+      : null
   );
   const [refreshTrigger, setRefreshTrigger] = useState(Date.now());
   const [showArchived, setShowArchived] = useState(false);
@@ -35,29 +60,39 @@ export default function Dashboard() {
 
   const updateLastSyncTime = (time: number | null) => {
     setLastSyncTime(time);
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       if (time) {
-        localStorage.setItem('lastSyncTime', time.toString());
+        localStorage.setItem("lastSyncTime", time.toString());
       } else {
-        localStorage.removeItem('lastSyncTime');
+        localStorage.removeItem("lastSyncTime");
       }
     }
   };
 
   // Fetch data with loading states
-  const messages = useQuery(api.messages.getMessagesFiltered, { limit: 10, includeArchived: showArchived });
+  const messages = useQuery(api.messages.getMessagesFiltered, {
+    limit: 10,
+    includeArchived: showArchived,
+  });
   const messageStats = useQuery(api.messages.getStats);
   const customerStats = useQuery(api.customers.getStats);
-  const recentCustomers = useQuery(api.customers.getRecentCustomers, { limit: 5 });
-  const systemLogs = useQuery(api.systemLogs.getRecentErrors, { limit: 5, hours: 24 });
+  const recentCustomers = useQuery(api.customers.getRecentCustomers, {
+    limit: 5,
+  });
+  const systemLogs = useQuery(api.systemLogs.getRecentErrors, {
+    limit: 5,
+    hours: 24,
+  });
 
   const formatDate = (timestamp: number) => {
     return new Date(timestamp).toLocaleString();
   };
 
   const truncateText = (text: string, maxLength: number = 50) => {
-    if (!text) return '';
-    return text.length > maxLength ? `${text.substring(0, maxLength)}...` : text;
+    if (!text) return "";
+    return text.length > maxLength
+      ? `${text.substring(0, maxLength)}...`
+      : text;
   };
 
   // Convex mutations for bulk actions
@@ -67,76 +102,88 @@ export default function Dashboard() {
   const toggleSelection = (gmailMessageId: string, checked: boolean) => {
     setSelectedIds((prev) => {
       const set = new Set(prev);
-      if (checked) set.add(gmailMessageId); else set.delete(gmailMessageId);
+      if (checked) set.add(gmailMessageId);
+      else set.delete(gmailMessageId);
       return Array.from(set);
     });
   };
 
   const toggleSelectAll = (checked: boolean) => {
     if (!messages || messages.length === 0) return;
-    if (checked) setSelectedIds(messages.map((m: any) => m.messageId));
+    if (checked)
+      setSelectedIds(messages.map((m: { messageId: string }) => m.messageId));
     else setSelectedIds([]);
   };
 
   const handleArchiveSelected = async () => {
     if (selectedIds.length === 0) return;
-    const toastId = toast.loading('Archiving messages...');
+    const toastId = toast.loading("Archiving messages...");
     try {
       await archiveByMessageIds({ messageIds: selectedIds });
-      toast.success('Archived selected messages', { id: toastId });
+      toast.success("Archived selected messages", { id: toastId });
       setSelectedIds([]);
     } catch (e) {
-      toast.error('Failed to archive messages', { description: e instanceof Error ? e.message : String(e), id: toastId });
+      toast.error("Failed to archive messages", {
+        description: e instanceof Error ? e.message : String(e),
+        id: toastId,
+      });
     }
   };
 
   const handleDeleteSelected = async () => {
     if (selectedIds.length === 0) return;
-    const confirmed = window.confirm(`Permanently delete ${selectedIds.length} message(s)? This cannot be undone.`);
+    const confirmed = window.confirm(
+      `Permanently delete ${selectedIds.length} message(s)? This cannot be undone.`
+    );
     if (!confirmed) return;
-    const toastId = toast.loading('Deleting messages...');
+    const toastId = toast.loading("Deleting messages...");
     try {
       await deleteByMessageIds({ messageIds: selectedIds });
-      toast.success('Deleted selected messages', { id: toastId });
+      toast.success("Deleted selected messages", { id: toastId });
       setSelectedIds([]);
     } catch (e) {
-      toast.error('Failed to delete messages', { description: e instanceof Error ? e.message : String(e), id: toastId });
+      toast.error("Failed to delete messages", {
+        description: e instanceof Error ? e.message : String(e),
+        id: toastId,
+      });
     }
   };
 
   const triggerEmailSync = async () => {
     setIsSyncing(true);
     const syncStartTime = Date.now();
-    const toastId = toast.loading('Syncing emails...');
-    
+    const toastId = toast.loading("Syncing emails...");
+
     try {
       const response = await fetch("/api/email/sync", { method: "POST" });
       const result = await response.json();
 
       if (response.status === 401) {
-        toast.error('Authentication Required', {
+        toast.error("Authentication Required", {
           description: result.message,
           action: {
-            label: 'Authenticate',
-            onClick: () => window.open("/api/auth/gmail", "_blank")
+            label: "Authenticate",
+            onClick: () => window.open("/api/auth/gmail", "_blank"),
           },
-          duration: 10000
+          duration: 10000,
         });
       } else if (response.ok) {
         updateLastSyncTime(syncStartTime);
         setRefreshTrigger(syncStartTime);
-        toast.success('Sync completed', {
-          description: result.message || 'Your emails have been synced successfully',
-          id: toastId
+        toast.success("Sync completed", {
+          description:
+            result.message || "Your emails have been synced successfully",
+          id: toastId,
         });
       } else {
         throw new Error(result.message || "Sync failed");
       }
     } catch (error) {
       console.error("Sync error:", error);
-      toast.error('Sync failed', {
-        description: error instanceof Error ? error.message : 'An unknown error occurred',
-        id: toastId
+      toast.error("Sync failed", {
+        description:
+          error instanceof Error ? error.message : "An unknown error occurred",
+        id: toastId,
       });
     } finally {
       setIsSyncing(false);
@@ -159,15 +206,18 @@ export default function Dashboard() {
 
   const renderEmptyState = (message: string, icon: React.ReactNode) => (
     <div className="flex flex-col items-center justify-center py-12 text-center">
-      <div className="mb-4 rounded-full bg-muted p-4">
-        {icon}
-      </div>
+      <div className="mb-4 rounded-full bg-muted p-4">{icon}</div>
       <h3 className="text-lg font-medium">No data available</h3>
       <p className="text-muted-foreground text-sm">{message}</p>
     </div>
   );
 
-  const renderStatsCard = (title: string, value: string | number, icon: React.ReactNode, description?: string) => (
+  const renderStatsCard = (
+    title: string,
+    value: string | number,
+    icon: React.ReactNode,
+    description?: string
+  ) => (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium">{title}</CardTitle>
@@ -175,12 +225,20 @@ export default function Dashboard() {
       </CardHeader>
       <CardContent>
         <div className="text-2xl font-bold">{value}</div>
-        {description && <p className="text-muted-foreground text-xs">{description}</p>}
+        {description && (
+          <p className="text-muted-foreground text-xs">{description}</p>
+        )}
       </CardContent>
     </Card>
   );
 
-  if (!messages || !messageStats || !customerStats || !recentCustomers || !systemLogs) {
+  if (
+    !messages ||
+    !messageStats ||
+    !customerStats ||
+    !recentCustomers ||
+    !systemLogs
+  ) {
     return renderLoadingSkeleton();
   }
 
@@ -210,7 +268,14 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <Tabs defaultValue="overview" className="space-y-4" onValueChange={(val) => { setActiveTab(val); if (val !== 'messages') setSelectedIds([]); }}>
+      <Tabs
+        defaultValue="overview"
+        className="space-y-4"
+        onValueChange={(val) => {
+          setActiveTab(val);
+          if (val !== "messages") setSelectedIds([]);
+        }}
+      >
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="messages">Messages</TabsTrigger>
@@ -240,9 +305,13 @@ export default function Dashboard() {
             )}
             {renderStatsCard(
               "Last Sync",
-              lastSyncTime ? new Date(lastSyncTime).toLocaleTimeString() : 'Never',
+              lastSyncTime
+                ? new Date(lastSyncTime).toLocaleTimeString()
+                : "Never",
               <Clock className="h-4 w-4" />,
-              lastSyncTime ? `at ${new Date(lastSyncTime).toLocaleDateString()}` : 'No sync data'
+              lastSyncTime
+                ? `at ${new Date(lastSyncTime).toLocaleDateString()}`
+                : "No sync data"
             )}
           </div>
 
@@ -267,11 +336,20 @@ export default function Dashboard() {
                       {messages.map((message) => (
                         <TableRow key={message._id}>
                           <TableCell className="font-medium">
-                            {message.customerName || message.customerEmail || 'Unknown'}
+                            {message.customerName ||
+                              message.customerEmail ||
+                              "Unknown"}
                           </TableCell>
-                          <TableCell>{truncateText(message.subject || 'No subject')}</TableCell>
                           <TableCell>
-                            <Badge variant={statusVariant[message.status as Status] || 'outline'}>
+                            {truncateText(message.subject || "No subject")}
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                statusVariant[message.status as Status] ||
+                                "outline"
+                              }
+                            >
                               {message.status}
                             </Badge>
                           </TableCell>
@@ -280,7 +358,9 @@ export default function Dashboard() {
                           </TableCell>
                           <TableCell className="text-right">
                             <Link href={`/messages/${message._id}`}>
-                              <Button variant="outline" size="sm">View</Button>
+                              <Button variant="outline" size="sm">
+                                View
+                              </Button>
                             </Link>
                           </TableCell>
                         </TableRow>
@@ -302,32 +382,30 @@ export default function Dashboard() {
                 <CardDescription>System logs and notifications</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {systemLogs.length > 0 ? (
-                  systemLogs.map((log) => (
-                    <div key={log._id} className="flex items-start space-x-3">
-                      <div className="flex-shrink-0 pt-0.5">
-                        {log.level === 'error' ? (
-                          <AlertCircle className="h-4 w-4 text-destructive" />
-                        ) : (
-                          <Activity className="h-4 w-4 text-muted-foreground" />
-                        )}
+                {systemLogs.length > 0
+                  ? systemLogs.map((log) => (
+                      <div key={log._id} className="flex items-start space-x-3">
+                        <div className="flex-shrink-0 pt-0.5">
+                          {log.level === "error" ? (
+                            <AlertCircle className="h-4 w-4 text-destructive" />
+                          ) : (
+                            <Activity className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium leading-none">
+                            {log.message}
+                          </p>
+                          <p className="text-muted-foreground text-xs">
+                            {formatDate(log.timestamp)}
+                          </p>
+                        </div>
                       </div>
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium leading-none">
-                          {log.message}
-                        </p>
-                        <p className="text-muted-foreground text-xs">
-                          {formatDate(log.timestamp)}
-                        </p>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  renderEmptyState(
-                    "No recent activity to display.",
-                    <Activity className="h-6 w-6" />
-                  )
-                )}
+                    ))
+                  : renderEmptyState(
+                      "No recent activity to display.",
+                      <Activity className="h-6 w-6" />
+                    )}
               </CardContent>
             </Card>
           </div>
@@ -357,10 +435,20 @@ export default function Dashboard() {
                     />
                     <span>Show archived</span>
                   </label>
-                  <Button variant="secondary" size="sm" onClick={handleArchiveSelected} disabled={selectedIds.length === 0}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleArchiveSelected}
+                    disabled={selectedIds.length === 0}
+                  >
                     Archive selected
                   </Button>
-                  <Button variant="destructive" size="sm" onClick={handleDeleteSelected} disabled={selectedIds.length === 0}>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleDeleteSelected}
+                    disabled={selectedIds.length === 0}
+                  >
                     Delete selected
                   </Button>
                 </div>
@@ -375,7 +463,10 @@ export default function Dashboard() {
                         <input
                           type="checkbox"
                           aria-label="Select all"
-                          checked={selectedIds.length > 0 && selectedIds.length === messages.length}
+                          checked={
+                            selectedIds.length > 0 &&
+                            selectedIds.length === messages.length
+                          }
                           onChange={(e) => toggleSelectAll(e.target.checked)}
                         />
                       </TableHead>
@@ -394,15 +485,29 @@ export default function Dashboard() {
                             type="checkbox"
                             aria-label="Select row"
                             checked={selectedIds.includes(message.messageId)}
-                            onChange={(e) => toggleSelection(message.messageId, e.target.checked)}
+                            onChange={(e) =>
+                              toggleSelection(
+                                message.messageId,
+                                e.target.checked
+                              )
+                            }
                           />
                         </TableCell>
                         <TableCell className="font-medium">
-                          {message.customerName || message.customerEmail || 'Unknown'}
+                          {message.customerName ||
+                            message.customerEmail ||
+                            "Unknown"}
                         </TableCell>
-                        <TableCell>{truncateText(message.subject || 'No subject')}</TableCell>
                         <TableCell>
-                          <Badge variant={statusVariant[message.status as Status] || 'outline'}>
+                          {truncateText(message.subject || "No subject")}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              statusVariant[message.status as Status] ||
+                              "outline"
+                            }
+                          >
                             {message.status}
                           </Badge>
                         </TableCell>
@@ -411,7 +516,9 @@ export default function Dashboard() {
                         </TableCell>
                         <TableCell className="text-right">
                           <Link href={`/messages/${message._id}`}>
-                            <Button variant="outline" size="sm">View</Button>
+                            <Button variant="outline" size="sm">
+                              View
+                            </Button>
                           </Link>
                         </TableCell>
                       </TableRow>
@@ -449,17 +556,23 @@ export default function Dashboard() {
                     {recentCustomers.map((customer) => (
                       <TableRow key={customer._id}>
                         <TableCell className="font-medium">
-                          {customer.name || 'Unnamed Customer'}
+                          {customer.name || "Unnamed Customer"}
                         </TableCell>
-                        <TableCell>{customer.email || 'No email'}</TableCell>
-                        <TableCell>{customer.phone || 'No phone'}</TableCell>
+                        <TableCell>{customer.email || "No email"}</TableCell>
+                        <TableCell>{customer.phone || "No phone"}</TableCell>
                         <TableCell>
-                          <Badge variant={customer.sapCustomerCode ? 'default' : 'outline'}>
-                            {customer.sapCustomerCode || 'No SAP code'}
+                          <Badge
+                            variant={
+                              customer.sapCustomerCode ? "default" : "outline"
+                            }
+                          >
+                            {customer.sapCustomerCode || "No SAP code"}
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          {new Date(customer.lastContactAt).toLocaleDateString()}
+                          {new Date(
+                            customer.lastContactAt
+                          ).toLocaleDateString()}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -483,14 +596,25 @@ export default function Dashboard() {
             <CardContent>
               {systemLogs.length > 0 ? (
                 <div className="space-y-4">
-                  {Object.entries(messageStats?.byStatus || {}).map(([status, count]) => (
-                    <div key={status} className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground capitalize">{status}</span>
-                      <Badge variant={status === 'completed' ? 'default' : 'secondary'}>
-                        {count as number}
-                      </Badge>
-                    </div>
-                  ))}
+                  {Object.entries(messageStats?.byStatus || {}).map(
+                    ([status, count]) => (
+                      <div
+                        key={status}
+                        className="flex items-center justify-between"
+                      >
+                        <span className="text-sm text-muted-foreground capitalize">
+                          {status}
+                        </span>
+                        <Badge
+                          variant={
+                            status === "completed" ? "default" : "secondary"
+                          }
+                        >
+                          {count as number}
+                        </Badge>
+                      </div>
+                    )
+                  )}
                 </div>
               ) : (
                 renderEmptyState(

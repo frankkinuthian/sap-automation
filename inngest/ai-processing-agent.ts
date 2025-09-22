@@ -12,6 +12,15 @@ const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 // Get AI configuration
 const config = getAIConfig();
 
+// Debug: Log configuration (without exposing the full API key)
+console.log("AI Processing Agent - Config loaded:", {
+  hasApiKey: !!config.openai.apiKey,
+  apiKeyPrefix: config.openai.apiKey
+    ? config.openai.apiKey.substring(0, 10) + "..."
+    : "none",
+  model: config.openai.model,
+});
+
 // Zod schema for customer information
 const customerInfoSchema = z.object({
   name: z.string().optional().describe("Customer's full name if mentioned"),
@@ -101,6 +110,14 @@ const analyzeMessageTool = createTool({
   }) as any,
   handler: async (params, context) => {
     try {
+      console.log("🔧 AI Processing Tool - Starting execution");
+      console.log("Tool params:", {
+        messageId: params.messageId,
+        category: params.category,
+        priority: params.priority,
+        confidenceScore: params.confidenceScore,
+      });
+
       // Validate message ID format
       if (!params.messageId || typeof params.messageId !== "string") {
         throw new Error("Invalid message ID provided");
@@ -191,7 +208,7 @@ const analyzeMessageTool = createTool({
         });
       });
 
-      return {
+      const result = {
         success: true,
         messageId: params.messageId,
         category: params.category,
@@ -199,6 +216,10 @@ const analyzeMessageTool = createTool({
         confidenceScore: params.confidenceScore,
         productsExtracted: params.products.length,
       };
+
+      console.log("✅ AI Processing Tool - Execution completed successfully");
+      console.log("Tool result:", result);
+      return result;
     } catch (error) {
       // Log the error
       await context.step?.run("log-error", async () => {
@@ -280,7 +301,10 @@ CONFIDENCE SCORING:
 
 Always use the analyze-message tool to save your analysis results.`,
 
-  model: openai(config.openai.model) as any,
+  // model: openai(config.openai.model, {
+  //   apiKey: config.openai.apiKey,
+  // }),
+  model: undefined, // Not used - using direct OpenAI service instead
 
   tools: [analyzeMessageTool],
 });

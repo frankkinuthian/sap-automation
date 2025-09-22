@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../../../convex/_generated/api";
 import { GmailOAuthClient } from "../../../../lib/email/gmail-oauth-client";
 
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
-export async function POST(request: NextRequest) {
+export async function POST() {
   try {
     console.log("Starting Gmail sync...");
 
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
             "Please visit /api/auth/gmail to authenticate with Gmail first",
           authUrl: "/api/auth/gmail",
         },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -66,7 +66,9 @@ export async function POST(request: NextRequest) {
         // Optionally mark as read after successful processing
         // await gmailClient.markAsRead(message.messageId);
       } catch (error) {
-        const errorMsg = `Error processing message ${message.messageId}: ${error instanceof Error ? error.message : String(error)}`;
+        const errorMsg = `Error processing message ${message.messageId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`;
         console.error(errorMsg);
         errors.push(errorMsg);
         errorCount++;
@@ -117,7 +119,7 @@ export async function POST(request: NextRequest) {
           message: "Please authenticate with Gmail first",
           authUrl: "/api/auth/gmail",
         },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -142,13 +144,13 @@ export async function POST(request: NextRequest) {
         successCount: 0,
         errorCount: 1,
       },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
 
 // Manual trigger endpoint for testing
-export async function GET(request: NextRequest) {
+export async function GET() {
   console.log("Gmail sync triggered via GET request");
-  return POST(request);
+  return POST();
 }

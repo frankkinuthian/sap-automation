@@ -546,7 +546,7 @@ export default function MessagesPage() {
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground">
-                Use the "All" tab to view and filter messages.
+                Use the &quot;All&quot; tab to view and filter messages.
               </p>
             </CardContent>
           </Card>
@@ -562,7 +562,7 @@ export default function MessagesPage() {
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground">
-                Use the "All" tab to view and filter messages.
+                Use the &quot;All&quot; tab to view and filter messages.
               </p>
             </CardContent>
           </Card>
@@ -578,7 +578,7 @@ export default function MessagesPage() {
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground">
-                Use the "All" tab to view and filter messages.
+                Use the &quot;All&quot; tab to view and filter messages.
               </p>
             </CardContent>
           </Card>
@@ -594,7 +594,7 @@ export default function MessagesPage() {
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground">
-                Use the "All" tab to view and filter messages.
+                Use the &quot;All&quot; tab to view and filter messages.
               </p>
             </CardContent>
           </Card>

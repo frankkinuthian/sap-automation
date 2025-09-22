@@ -1,6 +1,7 @@
 import { google, gmail_v1, Auth } from "googleapis";
 import fs from "fs";
 import path from "path";
+import { ParsedEmailMessage } from "./gmail-client";
 
 const SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
@@ -11,14 +12,15 @@ const SCOPES = [
 const TOKEN_PATH = path.join(process.cwd(), "gmail-token.json");
 const CREDENTIALS_PATH = path.join(process.cwd(), "gmail-credentials.json");
 
-export interface ParsedEmailMessage {
-  messageId: string;
-  channel: "email";
-  customerEmail: string;
-  customerName?: string;
-  subject?: string;
-  body: string;
-  receivedAt: number;
+interface GoogleCredentials {
+  client_secret: string;
+  client_id: string;
+  redirect_uris: string[];
+}
+
+interface _CredentialsFile {
+  web?: GoogleCredentials;
+  installed?: GoogleCredentials;
 }
 
 export class GmailOAuthClient {
@@ -29,13 +31,13 @@ export class GmailOAuthClient {
     try {
       // Load client secrets from downloaded file
       const credentials = this.loadCredentials();
-      const { client_secret, client_id, redirect_uris } =
-        credentials.web || credentials.installed;
+      const { client_secret, client_id, redirect_uris } = (credentials.web ||
+        credentials.installed) as unknown as GoogleCredentials;
 
       this.oAuth2Client = new google.auth.OAuth2(
         client_id,
         client_secret,
-        redirect_uris[0],
+        redirect_uris[0]
       );
 
       this.gmail = google.gmail({ version: "v1", auth: this.oAuth2Client });
@@ -47,15 +49,18 @@ export class GmailOAuthClient {
     }
   }
 
-  private loadCredentials(): { web?: any; installed?: any } {
+  private loadCredentials(): {
+    web?: Record<string, unknown>;
+    installed?: Record<string, unknown>;
+  } {
     try {
       if (!fs.existsSync(CREDENTIALS_PATH)) {
         console.error(
-          `Gmail credentials file not found at: ${CREDENTIALS_PATH}`,
+          `Gmail credentials file not found at: ${CREDENTIALS_PATH}`
         );
         console.log("Debug info:", this.getDebugInfo());
         throw new Error(
-          "Gmail credentials file not found. Please download OAuth2 credentials from Google Cloud Console and save as 'gmail-credentials.json' in the project root.",
+          "Gmail credentials file not found. Please download OAuth2 credentials from Google Cloud Console and save as 'gmail-credentials.json' in the project root."
         );
       }
 
@@ -70,11 +75,13 @@ export class GmailOAuthClient {
     } catch (error) {
       if (error instanceof SyntaxError) {
         throw new Error(
-          "Invalid JSON in gmail-credentials.json file. Please ensure the file contains valid JSON.",
+          "Invalid JSON in gmail-credentials.json file. Please ensure the file contains valid JSON."
         );
       }
       throw new Error(
-        `Failed to load Gmail credentials: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to load Gmail credentials: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   }
@@ -104,7 +111,7 @@ export class GmailOAuthClient {
       const tokens = JSON.parse(token);
       this.oAuth2Client.setCredentials(tokens);
       return true;
-    } catch (error) {
+    } catch (_error) {
       return false;
     }
   }
@@ -122,7 +129,7 @@ export class GmailOAuthClient {
     } catch (error) {
       console.log(
         "Stored token is invalid, need to re-authenticate:",
-        error instanceof Error ? error.message : String(error),
+        error instanceof Error ? error.message : String(error)
       );
       return false;
     }
@@ -131,7 +138,7 @@ export class GmailOAuthClient {
   async getUnreadMessages(): Promise<ParsedEmailMessage[]> {
     if (!(await this.isAuthenticated())) {
       throw new Error(
-        "Not authenticated. Please run the authentication flow first.",
+        "Not authenticated. Please run the authentication flow first."
       );
     }
 
@@ -159,11 +166,11 @@ export class GmailOAuthClient {
           });
 
           return this.parseGmailMessage(details.data);
-        }),
+        })
       );
 
       return messageDetails.filter(
-        (msg) => msg !== null,
+        (msg) => msg !== null
       ) as ParsedEmailMessage[];
     } catch (error) {
       console.error("Error fetching Gmail messages:", error);
@@ -172,7 +179,7 @@ export class GmailOAuthClient {
   }
 
   private parseGmailMessage(
-    message: gmail_v1.Schema$Message,
+    message: gmail_v1.Schema$Message
   ): ParsedEmailMessage | null {
     try {
       if (!message.payload || !message.id) {
@@ -255,7 +262,7 @@ export class GmailOAuthClient {
   }
 
   // Validate credentials file format
-  validateCredentials(credentials: any): boolean {
+  validateCredentials(credentials: Record<string, unknown>): boolean {
     const requiredFields = ["client_id", "client_secret", "redirect_uris"];
     const creds = credentials.web || credentials.installed;
 
@@ -265,15 +272,16 @@ export class GmailOAuthClient {
     }
 
     for (const field of requiredFields) {
-      if (!creds[field]) {
+      if (!(creds as Record<string, unknown>)[field]) {
         console.error(`Missing required field: ${field}`);
         return false;
       }
     }
 
     if (
-      !Array.isArray(creds.redirect_uris) ||
-      creds.redirect_uris.length === 0
+      !Array.isArray((creds as Record<string, unknown>).redirect_uris) ||
+      ((creds as Record<string, unknown>).redirect_uris as unknown[]).length ===
+        0
     ) {
       console.error("redirect_uris must be a non-empty array");
       return false;
@@ -283,8 +291,8 @@ export class GmailOAuthClient {
   }
 
   // Get debug information about the current setup
-  getDebugInfo(): { [key: string]: any } {
-    const debugInfo: { [key: string]: any } = {
+  getDebugInfo(): { [key: string]: unknown } {
+    const debugInfo: { [key: string]: unknown } = {
       credentialsFileExists: fs.existsSync(CREDENTIALS_PATH),
       tokenFileExists: fs.existsSync(TOKEN_PATH),
       credentialsPath: CREDENTIALS_PATH,
@@ -294,7 +302,7 @@ export class GmailOAuthClient {
     try {
       if (debugInfo.credentialsFileExists) {
         const credentials = JSON.parse(
-          fs.readFileSync(CREDENTIALS_PATH, "utf8"),
+          fs.readFileSync(CREDENTIALS_PATH, "utf8")
         );
         const creds = credentials.web || credentials.installed;
         debugInfo.hasValidCredentials = this.validateCredentials(credentials);
@@ -321,6 +329,8 @@ export class GmailOAuthClient {
   // Check if setup is complete
   isSetupComplete(): boolean {
     const debugInfo = this.getDebugInfo();
-    return debugInfo.credentialsFileExists && debugInfo.hasValidCredentials;
+    return Boolean(
+      debugInfo.credentialsFileExists && debugInfo.hasValidCredentials
+    );
   }
 }

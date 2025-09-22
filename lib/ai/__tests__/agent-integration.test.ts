@@ -1,58 +1,14 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { aiProcessingAgent } from "@/inngest/ai-processing-agent";
 import { excelParserAgent } from "@/inngest/excel-parser-agent";
 import { agentWrapper } from "@/lib/ai/agent-wrapper";
 import { getAIConfig } from "@/lib/ai/config";
 
-// Mock environment variables for testing
-vi.mock("@/lib/ai/config", () => ({
-  getAIConfig: vi.fn(() => ({
-    openai: {
-      apiKey: "test-api-key",
-      model: "gpt-4o-mini",
-      maxTokens: 2000,
-      temperature: 0.1,
-    },
-    processing: {
-      batchSize: 10,
-      retryAttempts: 3,
-      confidenceThreshold: 0.8,
-    },
-    inngest: {
-      eventKey: "test-event-key",
-      signingKey: "test-signing-key",
-    },
-  })),
-}));
-
-// Mock Convex client
-vi.mock("convex/browser", () => ({
-  ConvexHttpClient: vi.fn(() => ({
-    query: vi.fn(),
-    mutation: vi.fn(),
-  })),
-}));
-
-// Mock the agents
-vi.mock("@/inngest/ai-processing-agent", () => ({
-  aiProcessingAgent: {
-    name: "AI Message Processing Agent",
-    description: "Test agent",
-    tools: [],
-  },
-}));
-
-vi.mock("@/inngest/excel-parser-agent", () => ({
-  excelParserAgent: {
-    name: "Excel Parser Agent",
-    description: "Test agent",
-    tools: [],
-  },
-}));
+// Test configuration for agent integration
 
 describe("AI Agent Integration", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    // Setup for each test
   });
 
   describe("Configuration", () => {
@@ -119,28 +75,12 @@ describe("AI Agent Integration", () => {
 
   describe("Error Handling", () => {
     it("should handle rate limit errors appropriately", async () => {
-      // Mock a rate limit error scenario
-      const mockMessageContent = {
-        customerEmail: "test@example.com",
-        channel: "email",
-        body: "Test message",
-        receivedAt: Date.now(),
-      };
-
       // This test would need actual agent execution to test properly
       // For now, we'll test the wrapper's error categorization
       expect(agentWrapper).toBeDefined();
     });
 
     it("should handle API authentication errors", async () => {
-      // Test API key validation
-      const mockMessageContent = {
-        customerEmail: "test@example.com",
-        channel: "email",
-        body: "Test message",
-        receivedAt: Date.now(),
-      };
-
       // This would test actual API key validation
       expect(agentWrapper).toBeDefined();
     });
@@ -226,11 +166,7 @@ Frozen Meat,100,kg,Beef and chicken
 Rice,200,kg,Long grain white rice
 Cooking Oil,20,liters,Vegetable oil`;
 
-    const testScenario = {
-      messageId: "test-excel-processing",
-      excelData: testExcelData,
-      filename: "ship-provisions.xlsx",
-    };
+    // Test scenario would process this data with the Excel parser agent
 
     // This would test the actual Excel parser agent
     expect(testExcelData).toContain("Item,Quantity,Unit");

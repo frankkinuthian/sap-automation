@@ -1,9 +1,6 @@
-import { aiProcessingAgent } from "@/inngest/ai-processing-agent";
-import { excelParserAgent } from "@/inngest/excel-parser-agent";
 import { getAIConfig } from "./config";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
 
 // Initialize Convex client
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
@@ -67,7 +64,7 @@ export class AgentWrapper {
       body: string;
       receivedAt: number;
     }
-  ): Promise<any> {
+  ): Promise<Record<string, unknown>> {
     const maxRetries = config.processing.retryAttempts;
     let lastError: Error | null = null;
 
@@ -149,7 +146,7 @@ Message ID to process: ${messageId}`;
     messageId: string,
     excelData: string,
     filename?: string
-  ): Promise<any> {
+  ): Promise<Record<string, unknown>> {
     const maxRetries = config.processing.retryAttempts;
     let lastError: Error | null = null;
 
@@ -223,7 +220,7 @@ Message ID to process: ${messageId}`;
     messageId: string,
     prompt: string,
     type: "message" | "excel"
-  ): Promise<any> {
+  ): Promise<Record<string, unknown>> {
     // Simulate processing time
     await this.sleep(1000 + Math.random() * 2000);
 
@@ -431,7 +428,7 @@ Message ID to process: ${messageId}`;
    * Validate agent responses
    */
   validateAgentResponse(
-    response: any,
+    response: Record<string, unknown>,
     expectedType: "message" | "excel"
   ): boolean {
     if (!response || typeof response !== "object") {

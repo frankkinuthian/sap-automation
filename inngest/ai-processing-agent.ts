@@ -1,5 +1,4 @@
 import { createAgent, createTool } from "@inngest/agent-kit";
-import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";

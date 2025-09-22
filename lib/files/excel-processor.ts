@@ -10,7 +10,7 @@ interface ExcelProcessor {
     filename?: string
   ): Promise<string>;
   validateExcelFormat(content: string): boolean;
-  convertToCSV(excelContent: any): string;
+  convertToCSV(excelContent: unknown): string;
   detectExcelFormat(buffer: Buffer): "xlsx" | "xls" | "csv" | "unknown";
 }
 
@@ -202,7 +202,7 @@ export class ExcelProcessorService implements ExcelProcessor {
   /**
    * Convert Excel data to CSV format
    */
-  convertToCSV(excelContent: any): string {
+  convertToCSV(excelContent: unknown): string {
     if (typeof excelContent === "string") {
       return excelContent; // Already in text format
     }
@@ -295,7 +295,7 @@ export class ExcelProcessorService implements ExcelProcessor {
     quotationRef?: string;
   } {
     const lines = content.split("\n");
-    const vesselInfo: any = {};
+    const vesselInfo: Record<string, string> = {};
 
     // Look for vessel information in the first 20 lines (usually in headers)
     const headerLines = lines.slice(0, 20);

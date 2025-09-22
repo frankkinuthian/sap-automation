@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { inngest } from "@/inngest/client";
 import { getAIConfig } from "@/lib/ai/config";
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const config = getAIConfig();
 
@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
 
     try {
       // Try to send a test event to check connectivity
-      const testResult = await inngest.send({
+      await inngest.send({
         name: "test/connectivity",
         data: { test: true },
       });

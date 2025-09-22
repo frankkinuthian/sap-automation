@@ -48,13 +48,13 @@ const statusVariant: Record<
 
 export default function Dashboard() {
   const [isSyncing, setIsSyncing] = useState(false);
-  const [activeTab, setActiveTab] = useState("overview");
+  const [, setActiveTab] = useState("overview");
   const [lastSyncTime, setLastSyncTime] = useState<number | null>(
     typeof window !== "undefined"
       ? Number(localStorage.getItem("lastSyncTime")) || null
       : null
   );
-  const [refreshTrigger, setRefreshTrigger] = useState(Date.now());
+  const [, setRefreshTrigger] = useState(Date.now());
   const [showArchived, setShowArchived] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 

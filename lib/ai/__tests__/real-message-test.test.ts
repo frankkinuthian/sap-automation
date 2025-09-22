@@ -1,17 +1,13 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { ConvexHttpClient } from "convex/browser";
-import { api } from "@/convex/_generated/api";
+import { describe, it, expect, beforeEach } from "vitest";
 
 // This test file validates agent tool execution with real message data
 // It's designed to test the actual OpenAI integration when API keys are available
 
 describe("Real Message Processing Test", () => {
-  let convex: ConvexHttpClient;
-
   beforeEach(() => {
     // Initialize Convex client for testing
     if (process.env.NEXT_PUBLIC_CONVEX_URL) {
-      convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL);
+      // ConvexHttpClient would be initialized here for actual testing
     }
   });
 
@@ -30,9 +26,9 @@ describe("Real Message Processing Test", () => {
     console.log("✅ OpenAI API key is properly configured");
   });
 
-  it("should validate agent tool schemas", () => {
+  it("should validate agent tool schemas", async () => {
     // Test the Zod schemas used in agent tools
-    const { z } = require("zod");
+    const { z } = await import("zod");
 
     // Customer info schema validation
     const customerInfoSchema = z.object({
@@ -212,7 +208,7 @@ Mineral Water,100,bottles,Spring Brand,500ml bottles`;
   });
 
   it("should validate confidence scoring logic", () => {
-    const testScenarios = [
+    const _testScenarios = [
       {
         description: "Complete information with clear intent",
         data: {
@@ -237,7 +233,7 @@ Mineral Water,100,bottles,Spring Brand,500ml bottles`;
       },
     ];
 
-    testScenarios.forEach((scenario) => {
+    _testScenarios.forEach((scenario) => {
       // Calculate mock confidence score based on available data
       let score = 0.5; // Base score
 
@@ -303,7 +299,7 @@ Maritime Supplies Ltd.`,
 
 // Export test utilities for use in other test files
 export const testUtilities = {
-  createMockMessage: (overrides: any = {}) => ({
+  createMockMessage: (overrides: Record<string, unknown> = {}) => ({
     messageId: "test-message-id",
     customerEmail: "test@example.com",
     customerName: "Test Customer",
@@ -320,7 +316,7 @@ Frozen Meat,100,kg,Beef and chicken portions
 Rice,200,kg,Long grain white rice
 Cooking Oil,20,liters,Refined vegetable oil`,
 
-  validateMessageStructure: (message: any) => {
+  validateMessageStructure: (message: Record<string, unknown>) => {
     expect(message).toHaveProperty("messageId");
     expect(message).toHaveProperty("customerEmail");
     expect(message).toHaveProperty("body");

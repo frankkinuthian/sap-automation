@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
   try {
     // console.log("🔵 AI Process API called");
     // Validate configuration first
-    const config = getAIConfig();
+    getAIConfig(); // Validate configuration
     // console.log("🟢 AI Processing API - Configuration validated");
 
     const {
@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
 }
 
 // GET endpoint for testing
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const config = getAIConfig();
 

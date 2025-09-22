@@ -19,7 +19,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AIDataDisplay } from "@/components/ui/ai-data-display";
 import { MessageBody } from "@/components/ui/message-body";
 import {
-  ArrowLeft,
   Trash2,
   Zap,
   RefreshCw,

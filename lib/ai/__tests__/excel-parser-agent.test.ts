@@ -1,26 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { excelProcessor } from "@/lib/files/excel-processor";
 
-// Mock the Convex client and Inngest dependencies
-vi.mock("convex/browser", () => ({
-  ConvexHttpClient: vi.fn(() => ({
-    query: vi.fn(),
-    mutation: vi.fn(),
-  })),
-}));
-
-vi.mock("@inngest/agent-kit", () => ({
-  createAgent: vi.fn(),
-  createTool: vi.fn(),
-}));
-
-vi.mock("@ai-sdk/openai", () => ({
-  openai: vi.fn(),
-}));
+// Test file for Excel parser functionality
 
 describe("Excel Parser Agent", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    // Setup for each test
   });
 
   describe("Excel Processor Service", () => {
@@ -224,7 +209,6 @@ describe("Excel Parser Agent", () => {
       ];
 
       packagingRequirements.forEach((packaging) => {
-        const content = `Item,Packaging\nTest Item,${packaging}`;
         // This would be processed by the AI agent in actual implementation
         expect(packaging).toBeDefined();
       });

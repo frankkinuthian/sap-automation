@@ -14,7 +14,6 @@ import { Separator } from "@/components/ui/separator";
 import {
   AlertTriangle,
   CheckCircle,
-  Clock,
   Package,
   Ship,
   User,
@@ -87,9 +86,10 @@ interface AIDataDisplayProps {
 
 export function AIDataDisplay({
   data,
-  messageId,
+  messageId: _messageId, // Prefix with underscore to indicate intentionally unused
   onTriggerProcessing,
 }: AIDataDisplayProps) {
+  // messageId is intentionally unused but kept for future functionality
   if (!data) {
     return (
       <Card>

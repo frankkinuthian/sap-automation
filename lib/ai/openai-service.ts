@@ -19,7 +19,7 @@ interface AIAnalysisResult {
     | "other";
   priority: "low" | "medium" | "high" | "urgent";
   confidence: number;
-  extractedData: any;
+  extractedData: Record<string, unknown>;
 }
 
 export class OpenAIService {

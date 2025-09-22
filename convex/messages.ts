@@ -77,6 +77,33 @@ export const getAllMessages = query({
   },
 });
 
+// Get active (non-archived) messages with pagination
+export const getActiveMessages = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit || 20;
+    const all = await ctx.db.query("messages").order("desc").collect();
+    return all.filter((m) => !m.archivedAt).slice(0, limit);
+  },
+});
+
+// Get messages with optional inclusion of archived
+export const getMessagesFiltered = query({
+  args: {
+    limit: v.optional(v.number()),
+    includeArchived: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit || 20;
+    const includeArchived = args.includeArchived ?? false;
+    const all = await ctx.db.query("messages").order("desc").collect();
+    const filtered = includeArchived ? all : all.filter((m) => !m.archivedAt);
+    return filtered.slice(0, limit);
+  },
+});
+
 // Get messages by status
 export const getByStatus = query({
   args: {
@@ -111,6 +138,23 @@ export const getByChannel = query({
   },
 });
 
+// For sync: get received email messages that are not archived
+export const getReceivedEmailCandidates = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit || 500;
+    const byChannel = await ctx.db
+      .query("messages")
+      .withIndex("by_channel", (q) => q.eq("channel", "email"))
+      .order("desc")
+      .take(limit);
+
+    return byChannel.filter((m) => m.status === "received" && !m.archivedAt);
+  },
+});
+
 // Get messages by customer email
 export const getByCustomerEmail = query({
   args: {
@@ -124,6 +168,17 @@ export const getByCustomerEmail = query({
       )
       .order("desc")
       .collect();
+  },
+});
+
+// Get single message by Convex document id
+export const getById = query({
+  args: {
+    id: v.id("messages"),
+  },
+  handler: async (ctx, args) => {
+    const doc = await ctx.db.get(args.id);
+    return doc || null;
   },
 });
 
@@ -155,6 +210,71 @@ export const updateStatus = mutation({
     }
 
     return await ctx.db.patch(args.messageId, updates);
+  },
+});
+
+// Archive messages by their Gmail messageIds
+export const archiveByMessageIds = mutation({
+  args: {
+    messageIds: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    let archived = 0;
+
+    for (const externalId of args.messageIds) {
+      const existing = await ctx.db
+        .query("messages")
+        .withIndex("by_message_id", (q) => q.eq("messageId", externalId))
+        .first();
+
+      if (existing && existing.channel === "email" && !existing.archivedAt) {
+        await ctx.db.patch(existing._id, { archivedAt: now });
+        archived++;
+      }
+    }
+
+    // Log the archiving operation
+    await ctx.db.insert("systemLogs", {
+      level: "info",
+      message: `Archived ${archived} read Gmail messages`,
+      source: "gmail_oauth_sync",
+      data: { totalRequested: args.messageIds.length, archived },
+      timestamp: now,
+    });
+
+    return { archived };
+  },
+});
+
+// Hard delete messages by their Gmail messageIds
+export const deleteByMessageIds = mutation({
+  args: {
+    messageIds: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    let deleted = 0;
+    for (const externalId of args.messageIds) {
+      const existing = await ctx.db
+        .query("messages")
+        .withIndex("by_message_id", (q) => q.eq("messageId", externalId))
+        .first();
+
+      if (existing) {
+        await ctx.db.delete(existing._id);
+        deleted++;
+      }
+    }
+
+    await ctx.db.insert("systemLogs", {
+      level: "warning",
+      message: `Hard-deleted ${deleted} Gmail messages`,
+      source: "gmail_oauth_sync",
+      data: { totalRequested: args.messageIds.length, deleted },
+      timestamp: Date.now(),
+    });
+
+    return { deleted };
   },
 });
 

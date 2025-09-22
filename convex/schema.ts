@@ -39,6 +39,9 @@ export default defineSchema({
 
     // AI processing results (will be added in Step 2)
     aiParsedData: v.optional(v.any()),
+    
+    // Soft-archive marker: when set, message is hidden from active views
+    archivedAt: v.optional(v.number()),
   })
     .index("by_channel", ["channel"])
     .index("by_status", ["status"])

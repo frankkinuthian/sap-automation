@@ -76,3 +76,10 @@ db-config.json
 # Test data with sensitive information
 test-emails-real.json
 customer-data-real.json
+
+TYPESCRIPT_FIXES.md
+DEVELOPMENT.md
+vitest.config.ts
+/scripts
+.kiro
+.vscode

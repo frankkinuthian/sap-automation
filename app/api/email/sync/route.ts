@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
         { status: 401 },
       );
     }
+
     console.log("Fetching unread messages from Gmail...");
     const messages = await gmailClient.getUnreadMessages();
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { useQuery } from "convex/react";
+import Link from "next/link";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,8 @@ export default function Dashboard() {
     typeof window !== 'undefined' ? Number(localStorage.getItem('lastSyncTime')) || null : null
   );
   const [refreshTrigger, setRefreshTrigger] = useState(Date.now());
+  const [showArchived, setShowArchived] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const updateLastSyncTime = (time: number | null) => {
     setLastSyncTime(time);
@@ -42,7 +45,7 @@ export default function Dashboard() {
   };
 
   // Fetch data with loading states
-  const messages = useQuery(api.messages.getAllMessages, { limit: 10 });
+  const messages = useQuery(api.messages.getMessagesFiltered, { limit: 10, includeArchived: showArchived });
   const messageStats = useQuery(api.messages.getStats);
   const customerStats = useQuery(api.customers.getStats);
   const recentCustomers = useQuery(api.customers.getRecentCustomers, { limit: 5 });
@@ -55,6 +58,50 @@ export default function Dashboard() {
   const truncateText = (text: string, maxLength: number = 50) => {
     if (!text) return '';
     return text.length > maxLength ? `${text.substring(0, maxLength)}...` : text;
+  };
+
+  // Convex mutations for bulk actions
+  const archiveByMessageIds = useMutation(api.messages.archiveByMessageIds);
+  const deleteByMessageIds = useMutation(api.messages.deleteByMessageIds);
+
+  const toggleSelection = (gmailMessageId: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const set = new Set(prev);
+      if (checked) set.add(gmailMessageId); else set.delete(gmailMessageId);
+      return Array.from(set);
+    });
+  };
+
+  const toggleSelectAll = (checked: boolean) => {
+    if (!messages || messages.length === 0) return;
+    if (checked) setSelectedIds(messages.map((m: any) => m.messageId));
+    else setSelectedIds([]);
+  };
+
+  const handleArchiveSelected = async () => {
+    if (selectedIds.length === 0) return;
+    const toastId = toast.loading('Archiving messages...');
+    try {
+      await archiveByMessageIds({ messageIds: selectedIds });
+      toast.success('Archived selected messages', { id: toastId });
+      setSelectedIds([]);
+    } catch (e) {
+      toast.error('Failed to archive messages', { description: e instanceof Error ? e.message : String(e), id: toastId });
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedIds.length === 0) return;
+    const confirmed = window.confirm(`Permanently delete ${selectedIds.length} message(s)? This cannot be undone.`);
+    if (!confirmed) return;
+    const toastId = toast.loading('Deleting messages...');
+    try {
+      await deleteByMessageIds({ messageIds: selectedIds });
+      toast.success('Deleted selected messages', { id: toastId });
+      setSelectedIds([]);
+    } catch (e) {
+      toast.error('Failed to delete messages', { description: e instanceof Error ? e.message : String(e), id: toastId });
+    }
   };
 
   const triggerEmailSync = async () => {
@@ -163,7 +210,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <Tabs defaultValue="overview" className="space-y-4" onValueChange={setActiveTab}>
+      <Tabs defaultValue="overview" className="space-y-4" onValueChange={(val) => { setActiveTab(val); if (val !== 'messages') setSelectedIds([]); }}>
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="messages">Messages</TabsTrigger>
@@ -213,6 +260,7 @@ export default function Dashboard() {
                         <TableHead>Subject</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="text-right">Received</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -229,6 +277,11 @@ export default function Dashboard() {
                           </TableCell>
                           <TableCell className="text-right text-sm text-muted-foreground">
                             {formatDate(message.receivedAt)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Link href={`/messages/${message._id}`}>
+                              <Button variant="outline" size="sm">View</Button>
+                            </Link>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -290,10 +343,25 @@ export default function Dashboard() {
                     View and manage all processed messages
                   </CardDescription>
                 </div>
-                <div className="flex space-x-2">
+                <div className="flex items-center space-x-4">
                   <Button variant="outline" size="sm">
                     <RefreshCw className="mr-2 h-4 w-4" />
                     Refresh
+                  </Button>
+                  <label className="flex items-center space-x-2 text-sm text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={showArchived}
+                      onChange={(e) => setShowArchived(e.target.checked)}
+                      className="h-4 w-4 rounded border-muted-foreground/30"
+                    />
+                    <span>Show archived</span>
+                  </label>
+                  <Button variant="secondary" size="sm" onClick={handleArchiveSelected} disabled={selectedIds.length === 0}>
+                    Archive selected
+                  </Button>
+                  <Button variant="destructive" size="sm" onClick={handleDeleteSelected} disabled={selectedIds.length === 0}>
+                    Delete selected
                   </Button>
                 </div>
               </div>
@@ -303,15 +371,32 @@ export default function Dashboard() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-[40px]">
+                        <input
+                          type="checkbox"
+                          aria-label="Select all"
+                          checked={selectedIds.length > 0 && selectedIds.length === messages.length}
+                          onChange={(e) => toggleSelectAll(e.target.checked)}
+                        />
+                      </TableHead>
                       <TableHead>From</TableHead>
                       <TableHead>Subject</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Received</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {messages.map((message) => (
                       <TableRow key={message._id}>
+                        <TableCell>
+                          <input
+                            type="checkbox"
+                            aria-label="Select row"
+                            checked={selectedIds.includes(message.messageId)}
+                            onChange={(e) => toggleSelection(message.messageId, e.target.checked)}
+                          />
+                        </TableCell>
                         <TableCell className="font-medium">
                           {message.customerName || message.customerEmail || 'Unknown'}
                         </TableCell>
@@ -323,6 +408,11 @@ export default function Dashboard() {
                         </TableCell>
                         <TableCell className="text-right text-sm text-muted-foreground">
                           {formatDate(message.receivedAt)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Link href={`/messages/${message._id}`}>
+                            <Button variant="outline" size="sm">View</Button>
+                          </Link>
                         </TableCell>
                       </TableRow>
                     ))}

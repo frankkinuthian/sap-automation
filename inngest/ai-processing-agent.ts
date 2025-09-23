@@ -1,4 +1,4 @@
-import { createAgent, createTool } from "@inngest/agent-kit";
+import { createAgent, createTool, openai } from "@inngest/agent-kit";
 import { z } from "zod";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
@@ -107,7 +107,7 @@ const analyzeMessageTool = createTool({
       .optional()
       .describe("Urgent keywords found in the message"),
   }) as any,
-  handler: async (params, context) => {
+  handler: async (params) => {
     try {
       console.log("🔧 AI Processing Tool - Starting execution");
       console.log("Tool params:", {
@@ -122,89 +122,84 @@ const analyzeMessageTool = createTool({
         throw new Error("Invalid message ID provided");
       }
 
-      // Save parsed data to Convex database
-      await context.step?.run("save-parsed-data", async () => {
-        // Prepare the AI parsed data structure
-        const aiParsedData = {
-          processedAt: Date.now(),
-          processingVersion: "1.0",
-          aiModel: config.openai.model,
-          confidenceScore: params.confidenceScore,
+      // Prepare the AI parsed data structure
+      const aiParsedData = {
+        processedAt: Date.now(),
+        processingVersion: "1.0",
+        aiModel: config.openai.model,
+        confidenceScore: params.confidenceScore,
 
-          // Intent classification
-          category: params.category,
-          intent: params.extractedIntent,
-          priority: params.priority,
+        // Intent classification
+        category: params.category,
+        intent: params.extractedIntent,
+        priority: params.priority,
 
-          // Customer information
-          customer: {
-            ...params.customerInfo,
-            isNewCustomer: false, // Will be determined by database lookup
-            discrepancies: [], // Will be populated if differences found
+        // Customer information
+        customer: {
+          ...params.customerInfo,
+          isNewCustomer: false, // Will be determined by database lookup
+          discrepancies: [], // Will be populated if differences found
+        },
+
+        // Product information
+        products: params.products.map((product: any) => ({
+          ...product,
+          alternatives: [], // Can be populated in future enhancements
+          confidence: params.confidenceScore, // Individual product confidence
+        })),
+
+        // Business context
+        businessContext: params.businessContext,
+
+        // Processing flags
+        flags: {
+          requiresManualReview:
+            params.confidenceScore < config.processing.confidenceThreshold,
+          hasCalculations: params.products.some(
+            (p: any) => p.quantity && p.quantity > 0
+          ),
+          hasAttachments: false, // Will be updated when attachment processing is implemented
+          hasExcelAttachment: false,
+          hasStructuredItems: false,
+          readyForSAP:
+            params.confidenceScore >= config.processing.confidenceThreshold,
+          isUrgent: params.priority === "urgent",
+          hasDiscrepancies: false, // Will be updated after customer validation
+        },
+
+        // Store urgency keywords for debugging
+        urgencyKeywords: params.urgencyKeywords || [],
+
+        // Raw AI responses for debugging
+        rawResponses: {
+          openai: {
+            model: config.openai.model,
+            timestamp: Date.now(),
+            parameters: params,
           },
+        },
+      };
 
-          // Product information
-          products: params.products.map((product: any) => ({
-            ...product,
-            alternatives: [], // Can be populated in future enhancements
-            confidence: params.confidenceScore, // Individual product confidence
-          })),
-
-          // Business context
-          businessContext: params.businessContext,
-
-          // Processing flags
-          flags: {
-            requiresManualReview:
-              params.confidenceScore < config.processing.confidenceThreshold,
-            hasCalculations: params.products.some(
-              (p: any) => p.quantity && p.quantity > 0
-            ),
-            hasAttachments: false, // Will be updated when attachment processing is implemented
-            hasExcelAttachment: false,
-            hasStructuredItems: false,
-            readyForSAP:
-              params.confidenceScore >= config.processing.confidenceThreshold,
-            isUrgent: params.priority === "urgent",
-            hasDiscrepancies: false, // Will be updated after customer validation
-          },
-
-          // Store urgency keywords for debugging
-          urgencyKeywords: params.urgencyKeywords || [],
-
-          // Raw AI responses for debugging
-          rawResponses: {
-            openai: {
-              model: config.openai.model,
-              timestamp: Date.now(),
-              parameters: params,
-            },
-          },
-        };
-
-        // Update message status and save parsed data
-        return await convex.mutation(api.messages.updateStatus, {
-          messageId: params.messageId as Id<"messages">,
-          status: "parsed",
-          processedAt: Date.now(),
-          aiParsedData,
-        });
+      // Update message status and save parsed data
+      await convex.mutation(api.messages.updateStatus, {
+        messageId: params.messageId as Id<"messages">,
+        status: "parsed",
+        processedAt: Date.now(),
+        aiParsedData,
       });
 
       // Log successful processing
-      await context.step?.run("log-success", async () => {
-        return await convex.mutation(api.systemLogs.create, {
-          level: "info",
-          message: `AI processing completed for message ${params.messageId}`,
-          source: "ai_processing",
-          data: {
-            messageId: params.messageId,
-            category: params.category,
-            priority: params.priority,
-            confidenceScore: params.confidenceScore,
-            productsCount: params.products.length,
-          },
-        });
+      await convex.mutation(api.systemLogs.create, {
+        level: "info",
+        message: `AI processing completed for message ${params.messageId}`,
+        source: "ai_processing",
+        data: {
+          messageId: params.messageId,
+          category: params.category,
+          priority: params.priority,
+          confidenceScore: params.confidenceScore,
+          productsCount: params.products.length,
+        },
       });
 
       const result = {
@@ -221,19 +216,17 @@ const analyzeMessageTool = createTool({
       return result;
     } catch (error) {
       // Log the error
-      await context.step?.run("log-error", async () => {
-        return await convex.mutation(api.systemLogs.create, {
-          level: "error",
-          message: `AI processing failed for message ${params.messageId}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-          source: "ai_processing",
-          data: {
-            messageId: params.messageId,
-            error: error instanceof Error ? error.message : String(error),
-            stack: error instanceof Error ? error.stack : undefined,
-          },
-        });
+      await convex.mutation(api.systemLogs.create, {
+        level: "error",
+        message: `AI processing failed for message ${params.messageId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        source: "ai_processing",
+        data: {
+          messageId: params.messageId,
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        },
       });
 
       // Update message status to failed
@@ -300,10 +293,10 @@ CONFIDENCE SCORING:
 
 Always use the analyze-message tool to save your analysis results.`,
 
-  // model: openai(config.openai.model, {
-  //   apiKey: config.openai.apiKey,
-  // }),
-  model: undefined, // Not used - using direct OpenAI service instead
+  model: openai({
+    model: config.openai.model,
+    apiKey: config.openai.apiKey,
+  }),
 
   tools: [analyzeMessageTool],
 });

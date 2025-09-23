@@ -204,6 +204,9 @@ export class GmailOAuthClient {
         : "";
 
       const body = this.extractMessageBody(message.payload);
+      const attachmentMetadata = this.extractAttachmentMetadata(
+        message.payload
+      );
 
       return {
         messageId: message.id,
@@ -213,6 +216,7 @@ export class GmailOAuthClient {
         subject,
         body: body.replace(/\r\n/g, "\n").trim(),
         receivedAt: new Date(date).getTime() || Date.now(),
+        attachmentMetadata,
       };
     } catch (error) {
       console.error("Error parsing Gmail message:", error);
@@ -288,6 +292,114 @@ export class GmailOAuthClient {
     }
 
     return true;
+  }
+
+  // Extract attachment metadata from message payload
+  private extractAttachmentMetadata(
+    payload: gmail_v1.Schema$MessagePart
+  ): Array<{
+    filename: string;
+    mimeType: string;
+    size: number;
+    attachmentId: string;
+    isExcel: boolean;
+    processed: boolean;
+  }> {
+    const attachments: Array<{
+      filename: string;
+      mimeType: string;
+      size: number;
+      attachmentId: string;
+      isExcel: boolean;
+      processed: boolean;
+    }> = [];
+
+    const extractFromParts = (parts: gmail_v1.Schema$MessagePart[]) => {
+      for (const part of parts) {
+        // Check if this part has an attachment
+        if (part.body?.attachmentId && part.filename) {
+          const mimeType = part.mimeType || "application/octet-stream";
+          const size = part.body.size || 0;
+
+          // Determine if it's an Excel file
+          const isExcel = this.isExcelFile(part.filename, mimeType);
+
+          attachments.push({
+            filename: part.filename,
+            mimeType,
+            size,
+            attachmentId: part.body.attachmentId,
+            isExcel,
+            processed: false,
+          });
+        }
+
+        // Recursively check nested parts
+        if (part.parts) {
+          extractFromParts(part.parts);
+        }
+      }
+    };
+
+    if (payload.parts) {
+      extractFromParts(payload.parts);
+    }
+
+    return attachments;
+  }
+
+  // Check if a file is an Excel file based on filename and MIME type
+  private isExcelFile(filename: string, mimeType: string): boolean {
+    const excelExtensions = [".xlsx", ".xls", ".csv"];
+    const excelMimeTypes = [
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.ms-excel",
+      "text/csv",
+      "application/csv",
+    ];
+
+    const hasExcelExtension = excelExtensions.some((ext) =>
+      filename.toLowerCase().endsWith(ext)
+    );
+
+    const hasExcelMimeType = excelMimeTypes.includes(mimeType);
+
+    return hasExcelExtension || hasExcelMimeType;
+  }
+
+  // Download attachment content
+  async downloadAttachment(
+    messageId: string,
+    attachmentId: string
+  ): Promise<Buffer> {
+    if (!(await this.isAuthenticated())) {
+      throw new Error(
+        "Not authenticated. Please run the authentication flow first."
+      );
+    }
+
+    try {
+      const response = await this.gmail.users.messages.attachments.get({
+        userId: "me",
+        messageId,
+        id: attachmentId,
+      });
+
+      if (!response.data.data) {
+        throw new Error("No attachment data received");
+      }
+
+      // Gmail returns base64url encoded data, convert to buffer
+      const buffer = Buffer.from(response.data.data, "base64url");
+      return buffer;
+    } catch (error) {
+      console.error("Error downloading attachment:", error);
+      throw new Error(
+        `Failed to download attachment: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
   }
 
   // Get debug information about the current setup

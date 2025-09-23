@@ -16,6 +16,7 @@ export async function POST(request: NextRequest) {
       batchSize = 10,
       priority = "medium",
       processAll = false,
+      processAttachments = false,
     } = await request.json();
 
     // console.log("🔵 Request data:", {
@@ -42,6 +43,52 @@ export async function POST(request: NextRequest) {
         message: "Triggered processing of all received messages",
         eventsTriggered: 1,
         eventIds: eventResult.ids,
+      });
+    }
+
+    // If processAttachments is true, process messages with Excel attachments
+    if (processAttachments) {
+      const messagesWithExcel = await convex.query(
+        api.messages.getMessagesWithExcelAttachments,
+        {
+          processed: false,
+          limit: 50,
+        }
+      );
+
+      if (messagesWithExcel.length === 0) {
+        return NextResponse.json({
+          success: true,
+          message: "No messages with unprocessed Excel attachments found",
+          eventsTriggered: 0,
+        });
+      }
+
+      const events = [];
+      for (const message of messagesWithExcel) {
+        const excelAttachments =
+          message.attachmentMetadata?.filter(
+            (att) => att.isExcel && !att.processed
+          ) || [];
+
+        for (const attachment of excelAttachments) {
+          const eventResult = await inngest.send({
+            name: "ai/process.excel-attachment",
+            data: {
+              messageId: message._id,
+              attachmentId: attachment.attachmentId,
+              filename: attachment.filename,
+            },
+          });
+          events.push(...eventResult.ids);
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Triggered Excel processing for ${events.length} attachments`,
+        eventsTriggered: events.length,
+        eventIds: events,
       });
     }
 

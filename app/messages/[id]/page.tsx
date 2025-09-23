@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import {
@@ -18,6 +17,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AIDataDisplay } from "@/components/ui/ai-data-display";
 import { MessageBody } from "@/components/ui/message-body";
+import { ExcelUpload } from "@/components/ui/excel-upload";
+import { AttachmentStatus } from "@/components/ui/attachment-status";
 import {
   Trash2,
   Zap,
@@ -27,7 +28,7 @@ import {
   Home,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 export default function MessageDetailPage() {
   const params = useParams();
@@ -42,10 +43,7 @@ export default function MessageDetailPage() {
     };
     configuration?: Record<string, unknown>;
   } | null>(null);
-  // const [lastRefresh, setLastRefresh] = useState(Date.now()); // Removed - not used
-
-  // Initialize Convex client for polling
-  const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+  const [attachmentRefreshTrigger, setAttachmentRefreshTrigger] = useState(0);
 
   const message = useQuery(
     api.messages.getById,
@@ -53,8 +51,26 @@ export default function MessageDetailPage() {
   );
   const deleteByMessageIds = useMutation(api.messages.deleteByMessageIds);
 
+  // Memoize message data to prevent unnecessary rerenders
+  const memoizedMessage = useMemo(() => message, [message]);
+
   const formatDate = (timestamp?: number) =>
     timestamp ? new Date(timestamp).toLocaleString() : "-";
+
+  // Show completion toasts when message status changes
+  useEffect(() => {
+    if (message?.status === "parsed" && isProcessing) {
+      toast.success("AI processing completed!", {
+        description: "Message has been successfully analyzed.",
+      });
+      setIsProcessing(false);
+    } else if (message?.status === "failed" && isProcessing) {
+      toast.error("AI processing failed", {
+        description: "Please check the system logs for details.",
+      });
+      setIsProcessing(false);
+    }
+  }, [message?.status, isProcessing]);
 
   // Check AI processing status on component mount
   useEffect(() => {
@@ -72,21 +88,19 @@ export default function MessageDetailPage() {
   }, []);
 
   const handleTriggerProcessing = async () => {
-    if (!message) return;
+    if (!memoizedMessage) return;
 
-    // console.log("🔵 Process with AI button clicked for message:", message._id);
     setIsProcessing(true);
     const toastId = toast.loading("Triggering AI processing...");
 
     try {
-      // console.log("🔵 Calling AI process API with messageId:", message._id);
       const response = await fetch("/api/ai/process", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          messageIds: [message._id],
+          messageIds: [memoizedMessage._id],
         }),
       });
 
@@ -104,39 +118,7 @@ export default function MessageDetailPage() {
           duration: 5000,
         });
 
-        // Poll for status updates every 3 seconds
-        const pollInterval = setInterval(async () => {
-          // Polling for status updates - no need to set refresh state
-
-          // Check if message status has changed
-          try {
-            const updatedMessage = await convex.query(api.messages.getById, {
-              id: id as Id<"messages">,
-            });
-
-            if (updatedMessage && updatedMessage.status !== "processing") {
-              clearInterval(pollInterval);
-              if (updatedMessage.status === "parsed") {
-                toast.success("AI processing completed!", {
-                  description: "Message has been successfully analyzed.",
-                });
-              } else if (updatedMessage.status === "failed") {
-                toast.error("AI processing failed", {
-                  description: "Please check the system logs for details.",
-                });
-              }
-              // Refresh to show updated data
-              setTimeout(() => window.location.reload(), 1000);
-            }
-          } catch (error) {
-            console.error("Error polling for status:", error);
-          }
-        }, 3000);
-
-        // Stop polling after 2 minutes
-        setTimeout(() => {
-          clearInterval(pollInterval);
-        }, 120000);
+        // No need for polling - Convex queries are reactive and will update automatically
       } else {
         const errorMessage = result.message || result.error || "Unknown error";
         toast.error("Failed to trigger AI processing", {
@@ -215,6 +197,18 @@ export default function MessageDetailPage() {
     }
   };
 
+  if (!memoizedMessage) {
+    return (
+      <div className="flex-1 space-y-6 p-4 pt-6 md:p-8">
+        <div className="space-y-4">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-48 w-full" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 space-y-6 p-4 pt-6 md:p-8">
       {/* Header */}
@@ -238,7 +232,7 @@ export default function MessageDetailPage() {
           <h2 className="text-3xl font-bold tracking-tight">Message Details</h2>
         </div>
         <div className="flex items-center space-x-2">
-          {message.status === "received" && (
+          {memoizedMessage?.status === "received" && (
             <>
               <Button
                 variant="outline"
@@ -289,36 +283,36 @@ export default function MessageDetailPage() {
           <Card>
             <CardHeader>
               <CardTitle className="break-words">
-                {message.subject || "No subject"}
+                {memoizedMessage?.subject || "No subject"}
               </CardTitle>
               <CardDescription className="flex items-center gap-2 flex-wrap">
-                <Badge variant="secondary">{message.channel}</Badge>
+                <Badge variant="secondary">{memoizedMessage?.channel}</Badge>
                 <Badge
                   variant={
-                    message.status === "parsed" ||
-                    message.status === "completed"
+                    memoizedMessage?.status === "parsed" ||
+                    memoizedMessage?.status === "completed"
                       ? "default"
-                      : message.status === "failed"
+                      : memoizedMessage?.status === "failed"
                       ? "destructive"
-                      : message.status === "processing"
+                      : memoizedMessage?.status === "processing"
                       ? "secondary"
                       : "outline"
                   }
                 >
-                  {message.status === "processing" && (
+                  {memoizedMessage?.status === "processing" && (
                     <RefreshCw className="mr-1 h-3 w-3 animate-spin" />
                   )}
-                  {message.status}
+                  {memoizedMessage?.status}
                 </Badge>
-                {message.archivedAt && (
+                {memoizedMessage?.archivedAt && (
                   <Badge variant="outline">Archived</Badge>
                 )}
                 <span className="text-xs text-muted-foreground">
-                  Received: {formatDate(message.receivedAt)}
+                  Received: {formatDate(memoizedMessage?.receivedAt)}
                 </span>
-                {message.processedAt && (
+                {memoizedMessage?.processedAt && (
                   <span className="text-xs text-muted-foreground">
-                    • Processed: {formatDate(message.processedAt)}
+                    • Processed: {formatDate(memoizedMessage?.processedAt)}
                   </span>
                 )}
               </CardDescription>
@@ -328,7 +322,7 @@ export default function MessageDetailPage() {
           {/* Message Body */}
           <div>
             <h3 className="text-lg font-semibold mb-3">Message Content</h3>
-            <MessageBody body={message.body || ""} />
+            <MessageBody body={memoizedMessage?.body || ""} />
           </div>
 
           {/* Basic Customer Info */}
@@ -341,16 +335,20 @@ export default function MessageDetailPage() {
                 <div>
                   <span className="text-muted-foreground">Name:</span>
                   <p className="font-medium">
-                    {message.customerName || "Unknown"}
+                    {memoizedMessage?.customerName || "Unknown"}
                   </p>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Email:</span>
-                  <p className="font-medium">{message.customerEmail || "-"}</p>
+                  <p className="font-medium">
+                    {memoizedMessage?.customerEmail || "-"}
+                  </p>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Phone:</span>
-                  <p className="font-medium">{message.customerPhone || "-"}</p>
+                  <p className="font-medium">
+                    {memoizedMessage?.customerPhone || "-"}
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -396,11 +394,30 @@ export default function MessageDetailPage() {
             </Card>
           )}
 
+          {/* Excel Attachments */}
+          <div>
+            <h3 className="text-lg font-semibold mb-3">Excel Attachments</h3>
+            <div className="space-y-4">
+              <AttachmentStatus
+                messageId={memoizedMessage?._id || ""}
+                refreshTrigger={attachmentRefreshTrigger}
+              />
+              <ExcelUpload
+                messageId={memoizedMessage?._id || ""}
+                onUploadComplete={() => {
+                  // Trigger refresh of attachment status
+                  setAttachmentRefreshTrigger((prev) => prev + 1);
+                  // No need to reload - Convex queries are reactive
+                }}
+              />
+            </div>
+          </div>
+
           <div>
             <h3 className="text-lg font-semibold mb-3">AI Analysis</h3>
             <AIDataDisplay
-              data={message.aiParsedData || null}
-              messageId={message._id}
+              data={memoizedMessage?.aiParsedData || null}
+              messageId={memoizedMessage?._id || ""}
               onTriggerProcessing={handleTriggerProcessing}
             />
           </div>

@@ -58,6 +58,7 @@ export async function POST() {
           body: message.body,
           status: "received",
           receivedAt: message.receivedAt,
+          attachmentMetadata: message.attachmentMetadata,
         });
 
         console.log(`Stored message ${message.messageId} with ID ${messageId}`);

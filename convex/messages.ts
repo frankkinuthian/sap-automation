@@ -16,9 +16,24 @@ export const create = mutation({
       v.literal("processing"),
       v.literal("parsed"),
       v.literal("completed"),
-      v.literal("failed"),
+      v.literal("failed")
     ),
     receivedAt: v.number(),
+    attachmentMetadata: v.optional(
+      v.array(
+        v.object({
+          filename: v.string(),
+          mimeType: v.string(),
+          size: v.number(),
+          attachmentId: v.string(),
+          isExcel: v.boolean(),
+          processed: v.boolean(),
+          processedAt: v.optional(v.number()),
+          extractedContent: v.optional(v.string()),
+          processingError: v.optional(v.string()),
+        })
+      )
+    ),
   },
   handler: async (ctx, args) => {
     try {
@@ -34,7 +49,10 @@ export const create = mutation({
       }
 
       // Create the message
-      const messageId = await ctx.db.insert("messages", args);
+      const messageId = await ctx.db.insert("messages", {
+        ...args,
+        attachmentMetadata: args.attachmentMetadata || [],
+      });
 
       // Log the event
       await ctx.db.insert("systemLogs", {
@@ -112,7 +130,7 @@ export const getByStatus = query({
       v.literal("processing"),
       v.literal("parsed"),
       v.literal("completed"),
-      v.literal("failed"),
+      v.literal("failed")
     ),
   },
   handler: async (ctx, args) => {
@@ -164,7 +182,7 @@ export const getByCustomerEmail = query({
     return await ctx.db
       .query("messages")
       .withIndex("by_customer_email", (q) =>
-        q.eq("customerEmail", args.customerEmail),
+        q.eq("customerEmail", args.customerEmail)
       )
       .order("desc")
       .collect();
@@ -191,7 +209,7 @@ export const updateStatus = mutation({
       v.literal("processing"),
       v.literal("parsed"),
       v.literal("completed"),
-      v.literal("failed"),
+      v.literal("failed")
     ),
     processedAt: v.optional(v.number()),
     aiParsedData: v.optional(v.any()),
@@ -278,6 +296,74 @@ export const deleteByMessageIds = mutation({
   },
 });
 
+// Update attachment metadata for a message
+export const updateAttachmentMetadata = mutation({
+  args: {
+    messageId: v.id("messages"),
+    attachmentId: v.string(),
+    updates: v.object({
+      processed: v.optional(v.boolean()),
+      processedAt: v.optional(v.number()),
+      extractedContent: v.optional(v.string()),
+      processingError: v.optional(v.string()),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const message = await ctx.db.get(args.messageId);
+    if (!message) {
+      throw new Error(`Message ${args.messageId} not found`);
+    }
+
+    const attachmentMetadata = message.attachmentMetadata || [];
+    const updatedMetadata = attachmentMetadata.map((attachment) => {
+      if (attachment.attachmentId === args.attachmentId) {
+        return {
+          ...attachment,
+          ...args.updates,
+        };
+      }
+      return attachment;
+    });
+
+    return await ctx.db.patch(args.messageId, {
+      attachmentMetadata: updatedMetadata,
+    });
+  },
+});
+
+// Get messages with Excel attachments that need processing
+export const getMessagesWithExcelAttachments = query({
+  args: {
+    processed: v.optional(v.boolean()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit || 50;
+    const processed = args.processed ?? false;
+
+    const allMessages = await ctx.db
+      .query("messages")
+      .order("desc")
+      .take(limit * 2);
+
+    return allMessages
+      .filter((message) => {
+        if (
+          !message.attachmentMetadata ||
+          message.attachmentMetadata.length === 0
+        ) {
+          return false;
+        }
+
+        return message.attachmentMetadata.some(
+          (attachment) =>
+            attachment.isExcel && attachment.processed === processed
+        );
+      })
+      .slice(0, limit);
+  },
+});
+
 // Get message statistics
 export const getStats = query({
   args: {},
@@ -330,14 +416,14 @@ async function upsertCustomer(ctx: any, messageData: any) {
       customer = await ctx.db
         .query("customers")
         .withIndex("by_email", (q: any) =>
-          q.eq("email", messageData.customerEmail),
+          q.eq("email", messageData.customerEmail)
         )
         .first();
     } else if (messageData.customerPhone) {
       customer = await ctx.db
         .query("customers")
         .withIndex("by_phone", (q: any) =>
-          q.eq("phone", messageData.customerPhone),
+          q.eq("phone", messageData.customerPhone)
         )
         .first();
     }

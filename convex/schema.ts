@@ -24,13 +24,30 @@ export default defineSchema({
     body: v.string(),
     attachments: v.optional(v.array(v.string())), // File URLs/paths
 
+    // Attachment metadata for processing
+    attachmentMetadata: v.optional(
+      v.array(
+        v.object({
+          filename: v.string(),
+          mimeType: v.string(),
+          size: v.number(),
+          attachmentId: v.string(), // Gmail attachment ID or file path
+          isExcel: v.boolean(),
+          processed: v.boolean(),
+          processedAt: v.optional(v.number()),
+          extractedContent: v.optional(v.string()),
+          processingError: v.optional(v.string()),
+        })
+      )
+    ),
+
     // Processing status
     status: v.union(
       v.literal("received"),
       v.literal("processing"),
       v.literal("parsed"),
       v.literal("completed"),
-      v.literal("failed"),
+      v.literal("failed")
     ),
 
     // Timestamps
@@ -39,7 +56,7 @@ export default defineSchema({
 
     // AI processing results (will be added in Step 2)
     aiParsedData: v.optional(v.any()),
-    
+
     // Soft-archive marker: when set, message is hidden from active views
     archivedAt: v.optional(v.number()),
   })

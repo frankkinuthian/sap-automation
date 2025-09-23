@@ -9,6 +9,17 @@ export interface ParsedEmailMessage {
   body: string;
   receivedAt: number;
   attachments?: string[];
+  attachmentMetadata?: Array<{
+    filename: string;
+    mimeType: string;
+    size: number;
+    attachmentId: string;
+    isExcel: boolean;
+    processed: boolean;
+    processedAt?: number;
+    extractedContent?: string;
+    processingError?: string;
+  }>;
 }
 
 export class GmailClient {

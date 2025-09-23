@@ -1,4 +1,4 @@
-import { createAgent, createTool } from "@inngest/agent-kit";
+import { createAgent, createTool, openai } from "@inngest/agent-kit";
 import { z } from "zod";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
@@ -155,7 +155,7 @@ const parseExcelTool = createTool({
       .optional()
       .describe("Total value of all items if calculable"),
   }) as any,
-  handler: async (params, context) => {
+  handler: async (params) => {
     try {
       // Validate message ID format
       if (!params.messageId || typeof params.messageId !== "string") {
@@ -168,20 +168,13 @@ const parseExcelTool = createTool({
       }
 
       // Get existing message data
-      const existingMessage = await context.step?.run(
-        "get-existing-message",
-        async () => {
-          const msg = await convex.query(api.messages.getById, {
-            id: params.messageId as Id<"messages">,
-          });
+      const existingMessage = await convex.query(api.messages.getById, {
+        id: params.messageId as Id<"messages">,
+      });
 
-          if (!msg) {
-            throw new Error(`Message ${params.messageId} not found`);
-          }
-
-          return msg;
-        }
-      );
+      if (!existingMessage) {
+        throw new Error(`Message ${params.messageId} not found`);
+      }
 
       // Convert items to SAP Business One format
       const sapItems: z.infer<typeof sapItemFormatSchema>[] = params.items.map(
@@ -207,11 +200,6 @@ const parseExcelTool = createTool({
             (item.unitPrice ? item.unitPrice * item.quantity : undefined),
         })
       );
-
-      // Ensure existingMessage is not null
-      if (!existingMessage) {
-        throw new Error(`Message ${params.messageId} not found after query`);
-      }
 
       // Merge Excel data with existing parsed data
       const updatedParsedData = {
@@ -248,30 +236,26 @@ const parseExcelTool = createTool({
       };
 
       // Save parsed Excel data to the message
-      await context.step?.run("save-excel-parsed-data", async () => {
-        return await convex.mutation(api.messages.updateStatus, {
-          messageId: params.messageId as Id<"messages">,
-          status: "parsed",
-          processedAt: Date.now(),
-          aiParsedData: updatedParsedData,
-        });
+      await convex.mutation(api.messages.updateStatus, {
+        messageId: params.messageId as Id<"messages">,
+        status: "parsed",
+        processedAt: Date.now(),
+        aiParsedData: updatedParsedData,
       });
 
       // Log successful Excel processing
-      await context.step?.run("log-excel-success", async () => {
-        return await convex.mutation(api.systemLogs.create, {
-          level: "info",
-          message: `Excel parsing completed for message ${params.messageId}`,
-          source: "excel_processing",
-          data: {
-            messageId: params.messageId,
-            totalItems: params.totalItems,
-            confidenceScore: params.confidenceScore,
-            hasVesselInfo: !!params.vesselInfo,
-            hasPricing: !!params.totalValue,
-            currency: params.currency,
-          },
-        });
+      await convex.mutation(api.systemLogs.create, {
+        level: "info",
+        message: `Excel parsing completed for message ${params.messageId}`,
+        source: "excel_processing",
+        data: {
+          messageId: params.messageId,
+          totalItems: params.totalItems,
+          confidenceScore: params.confidenceScore,
+          hasVesselInfo: !!params.vesselInfo,
+          hasPricing: !!params.totalValue,
+          currency: params.currency,
+        },
       });
 
       return {
@@ -286,19 +270,17 @@ const parseExcelTool = createTool({
       };
     } catch (error) {
       // Log the error
-      await context.step?.run("log-excel-error", async () => {
-        return await convex.mutation(api.systemLogs.create, {
-          level: "error",
-          message: `Excel parsing failed for message ${params.messageId}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-          source: "excel_processing",
-          data: {
-            messageId: params.messageId,
-            error: error instanceof Error ? error.message : String(error),
-            stack: error instanceof Error ? error.stack : undefined,
-          },
-        });
+      await convex.mutation(api.systemLogs.create, {
+        level: "error",
+        message: `Excel parsing failed for message ${params.messageId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        source: "excel_processing",
+        data: {
+          messageId: params.messageId,
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        },
       });
 
       // Update message status to failed if not already processed
@@ -377,10 +359,10 @@ SAP CONVERSION REQUIREMENTS:
 
 Always use the parse-excel-attachment tool to save your analysis results.`,
 
-  // model: openai("gpt-4o", {
-  //   apiKey: config.openai.apiKey,
-  // }),
-  model: undefined, // Not used - using direct OpenAI service instead
+  model: openai({
+    model: config.openai.model,
+    apiKey: config.openai.apiKey,
+  }),
 
   tools: [parseExcelTool],
 });

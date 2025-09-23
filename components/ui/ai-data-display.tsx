@@ -76,6 +76,55 @@ interface AIProcessedData {
     hasDiscrepancies?: boolean;
   };
   urgencyKeywords?: string[];
+  excelData?: {
+    processedAt?: number;
+    totalItems?: number;
+    confidenceScore?: number;
+    items?: Array<{
+      itemCode?: string;
+      itemName: string;
+      quantity: number;
+      unit: string;
+      specifications?: string;
+      category?: string;
+      brand?: string;
+      packaging?: string;
+      notes?: string;
+      unitPrice?: number;
+      totalPrice?: number;
+    }>;
+    vesselInfo?: {
+      vesselName?: string;
+      arrivalDate?: string;
+      port?: string;
+      quotationReference?: string;
+      imo?: string;
+      flag?: string;
+      agent?: string;
+    };
+    extractionNotes?: string;
+    currency?: string;
+    totalValue?: number;
+    sapFormat?: {
+      businessPartner?: string;
+      currency?: string;
+      totalValue?: number;
+      items?: Array<{
+        ItemCode: string;
+        ItemName: string;
+        Quantity: number;
+        UoMEntry: string;
+        ItemRemarks?: string;
+        ItemGroup: string;
+        Brand?: string;
+        PackagingRequirements?: string;
+        UnitPrice?: number;
+        LineTotal?: number;
+      }>;
+      vesselInfo?: any;
+      processedAt?: number;
+    };
+  };
 }
 
 interface AIDataDisplayProps {
@@ -368,6 +417,226 @@ export function AIDataDisplay({
                 </div>
               ))}
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Excel Data */}
+      {data.excelData && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Excel Data ({data.excelData?.totalItems || 0} items)
+            </CardTitle>
+            <CardDescription>
+              Processed on{" "}
+              {formatDate(data.excelData?.processedAt || Date.now())}
+              {data.excelData?.confidenceScore && (
+                <span>
+                  {" "}
+                  • {Math.round(data.excelData.confidenceScore * 100)}%
+                  confidence
+                </span>
+              )}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Vessel Info */}
+            {data.excelData?.vesselInfo && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                <div className="flex items-center gap-2 mb-2">
+                  <Ship className="h-4 w-4 text-blue-600" />
+                  <span className="text-sm font-medium text-blue-800">
+                    Vessel Information
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-sm text-blue-700">
+                  {data.excelData.vesselInfo?.vesselName && (
+                    <div>
+                      <span className="font-medium">Name:</span>{" "}
+                      {data.excelData?.vesselInfo?.vesselName}
+                    </div>
+                  )}
+                  {data.excelData.vesselInfo?.arrivalDate && (
+                    <div>
+                      <span className="font-medium">Arrival:</span>{" "}
+                      {data.excelData?.vesselInfo?.arrivalDate}
+                    </div>
+                  )}
+                  {data.excelData.vesselInfo?.port && (
+                    <div>
+                      <span className="font-medium">Port:</span>{" "}
+                      {data.excelData?.vesselInfo?.port}
+                    </div>
+                  )}
+                  {data.excelData.vesselInfo?.quotationReference && (
+                    <div>
+                      <span className="font-medium">Quote Ref:</span>{" "}
+                      {data.excelData?.vesselInfo?.quotationReference}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Summary */}
+            <div className="grid grid-cols-3 gap-4 text-sm">
+              <div className="text-center p-2 bg-gray-50 rounded">
+                <div className="font-medium text-lg">
+                  {data.excelData?.totalItems || 0}
+                </div>
+                <div className="text-muted-foreground">Items</div>
+              </div>
+              {data.excelData?.totalValue && (
+                <div className="text-center p-2 bg-gray-50 rounded">
+                  <div className="font-medium text-lg">
+                    {data.excelData?.currency || "$"}
+                    {data.excelData?.totalValue?.toLocaleString()}
+                  </div>
+                  <div className="text-muted-foreground">Total Value</div>
+                </div>
+              )}
+              <div className="text-center p-2 bg-gray-50 rounded">
+                <div className="font-medium text-lg">
+                  {Math.round((data.excelData?.confidenceScore || 0) * 100)}%
+                </div>
+                <div className="text-muted-foreground">Confidence</div>
+              </div>
+            </div>
+
+            {/* Items */}
+            {data.excelData?.items && data.excelData.items.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="font-medium">Items</h4>
+                <div className="max-h-96 overflow-y-auto space-y-2">
+                  {data.excelData?.items?.map((item, index) => (
+                    <div
+                      key={index}
+                      className="border rounded-lg p-3 space-y-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <h5 className="font-medium">{item.itemName}</h5>
+                        <div className="text-sm text-muted-foreground">
+                          {item.quantity} {item.unit}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        {item.itemCode && (
+                          <div>
+                            <span className="text-muted-foreground">Code:</span>{" "}
+                            {item.itemCode}
+                          </div>
+                        )}
+                        {item.category && (
+                          <div>
+                            <span className="text-muted-foreground">
+                              Category:
+                            </span>{" "}
+                            {item.category}
+                          </div>
+                        )}
+                        {item.brand && (
+                          <div>
+                            <span className="text-muted-foreground">
+                              Brand:
+                            </span>{" "}
+                            {item.brand}
+                          </div>
+                        )}
+                        {item.unitPrice && (
+                          <div>
+                            <span className="text-muted-foreground">
+                              Unit Price:
+                            </span>{" "}
+                            {data.excelData?.currency || "$"}
+                            {item.unitPrice}
+                          </div>
+                        )}
+                      </div>
+
+                      {item.specifications && (
+                        <div className="text-sm">
+                          <span className="text-muted-foreground">
+                            Specifications:
+                          </span>
+                          <p className="mt-1">{item.specifications}</p>
+                        </div>
+                      )}
+
+                      {item.packaging && (
+                        <div className="text-sm">
+                          <span className="text-muted-foreground">
+                            Packaging:
+                          </span>{" "}
+                          {item.packaging}
+                        </div>
+                      )}
+
+                      {item.notes && (
+                        <div className="text-sm">
+                          <span className="text-muted-foreground">Notes:</span>{" "}
+                          {item.notes}
+                        </div>
+                      )}
+
+                      {item.totalPrice && (
+                        <div className="text-sm font-medium text-right">
+                          Total: {data.excelData?.currency || "$"}
+                          {item.totalPrice.toLocaleString()}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* SAP Format Preview */}
+            {data.excelData?.sapFormat && data.excelData.sapFormat?.items && (
+              <div className="space-y-2">
+                <h4 className="font-medium">SAP Business One Format</h4>
+                <div className="p-3 bg-green-50 border border-green-200 rounded-md">
+                  <div className="text-sm text-green-700">
+                    <div>
+                      <span className="font-medium">Business Partner:</span>{" "}
+                      {data.excelData.sapFormat?.businessPartner}
+                    </div>
+                    <div>
+                      <span className="font-medium">Currency:</span>{" "}
+                      {data.excelData.sapFormat?.currency}
+                    </div>
+                    {data.excelData.sapFormat?.totalValue && (
+                      <div>
+                        <span className="font-medium">Total Value:</span>{" "}
+                        {data.excelData?.sapFormat?.currency}
+                        {data.excelData?.sapFormat?.totalValue?.toLocaleString()}
+                      </div>
+                    )}
+                    <div>
+                      <span className="font-medium">Items:</span>{" "}
+                      {data.excelData.sapFormat?.items?.length || 0}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Extraction Notes */}
+            {data.excelData?.extractionNotes && (
+              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                  <span className="text-sm font-medium text-yellow-800">
+                    Extraction Notes
+                  </span>
+                </div>
+                <p className="text-sm text-yellow-700">
+                  {data.excelData?.extractionNotes}
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ConvexClientProvider } from "./ConvexClientProvider";
-import { Toaster } from 'sonner';
+import { Toaster } from "sonner";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -32,6 +33,7 @@ export default function RootLayout({
         <ConvexClientProvider>
           {children}
           <Toaster position="top-right" richColors closeButton />
+          <Analytics />
         </ConvexClientProvider>
       </body>
     </html>

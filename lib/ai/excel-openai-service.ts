@@ -145,7 +145,7 @@ Return only valid JSON, no additional text.`;
     } catch (error) {
       console.error(
         "Failed to parse OpenAI Excel response as JSON:",
-        responseText
+        responseText, error
       );
       throw new Error("Invalid JSON response from OpenAI");
     }

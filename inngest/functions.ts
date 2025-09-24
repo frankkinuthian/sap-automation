@@ -1,6 +1,6 @@
 import { inngest } from "./client";
 // import { aiProcessingAgent } from "./ai-processing-agent"; // Not used with direct OpenAI service
-import { excelParserAgent } from "./excel-parser-agent";
+// import { excelParserAgent } from "./excel-parser-agent"; // Replaced with direct OpenAI service
 import { excelProcessor } from "@/lib/files/excel-processor";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
@@ -776,29 +776,23 @@ export const processExcelAttachmentFromGmail = inngest.createFunction(
       });
     });
 
-    // Process Excel data using the Excel Parser Agent
-    const result = await (async () => {
+    // Process Excel data using direct OpenAI (avoiding agent-kit compatibility issues)
+    const result = await step.run("process-excel-with-openai", async () => {
       try {
-        return await excelParserAgent.run(`Parse this Excel spreadsheet data for maritime provisioning items:
+        // Import the direct Excel processing service
+        const { processExcelWithOpenAI } = await import(
+          "@/lib/ai/excel-openai-service"
+        );
 
-CUSTOMER: ${message.customerEmail} ${
-          message.customerName ? `(${message.customerName})` : ""
-        }
-FILENAME: ${attachmentMetadata.filename}
-FILE_SIZE: ${attachmentMetadata.size} bytes
-VALID_FORMAT: ${isValidFormat}
-
-EXCEL DATA:
-${excelData}
-
-Please analyze this Excel data thoroughly and use the parse-excel-attachment tool to save the extracted data. Focus on:
-1. Extracting all shipping items with quantities, units, and specifications
-2. Identifying vessel information (name, arrival date, port)
-3. Converting data to SAP Business One compatible format
-4. Calculating confidence scores based on data completeness
-5. Handling maritime-specific terminology and units
-
-Message ID to process: ${messageId}`);
+        return await processExcelWithOpenAI(
+          messageId,
+          excelData,
+          message.customerEmail || "",
+          message.customerName,
+          attachmentMetadata.filename,
+          attachmentMetadata.size,
+          isValidFormat
+        );
       } catch (error) {
         await handleOpenAIError(
           error,
@@ -806,7 +800,7 @@ Message ID to process: ${messageId}`);
           "Excel attachment processing"
         );
       }
-    })();
+    });
 
     // Mark attachment as processed
     await step.run("mark-attachment-processed", async () => {
@@ -958,32 +952,27 @@ export const processExcelAttachment = inngest.createFunction(
       });
     });
 
-    // Process Excel data using the Excel Parser Agent
-    const result = await (async () => {
+    // Process Excel data using direct OpenAI (avoiding agent-kit compatibility issues)
+    const result = await step.run("process-excel-with-openai", async () => {
       try {
-        return await excelParserAgent.run(`Parse this Excel spreadsheet data for maritime provisioning items:
+        // Import the direct Excel processing service
+        const { processExcelWithOpenAI } = await import(
+          "@/lib/ai/excel-openai-service"
+        );
 
-CUSTOMER: ${message.customerEmail} ${
-          message.customerName ? `(${message.customerName})` : ""
-        }
-FILENAME: ${filename || filePath || "Unknown"}
-VALID_FORMAT: ${isValidFormat}
-
-EXCEL DATA:
-${excelData}
-
-Please analyze this Excel data thoroughly and use the parse-excel-attachment tool to save the extracted data. Focus on:
-1. Extracting all shipping items with quantities, units, and specifications
-2. Identifying vessel information (name, arrival date, port)
-3. Converting data to SAP Business One compatible format
-4. Calculating confidence scores based on data completeness
-5. Handling maritime-specific terminology and units
-
-Message ID to process: ${messageId}`);
+        return await processExcelWithOpenAI(
+          messageId,
+          excelData,
+          message.customerEmail || "",
+          message.customerName,
+          filename || filePath || "Unknown",
+          undefined, // fileSize not available here
+          isValidFormat
+        );
       } catch (error) {
         await handleOpenAIError(error, messageId, "Excel processing");
       }
-    })();
+    });
 
     return {
       success: true,
@@ -1139,84 +1128,27 @@ export const processExcelData = inngest.createFunction(
       });
     });
 
-    // Process Excel data using the Excel Parser Agent
-    const result = await (async () => {
+    // Process Excel data using direct OpenAI service
+    const result = await step.run("process-excel-with-openai", async () => {
       try {
-        // Truncate Excel data very aggressively to avoid context length issues
-        const maxExcelDataLength = 800; // Very small limit for OpenAI context
-        const truncatedExcelData =
-          processedExcelData.length > maxExcelDataLength
-            ? processedExcelData.substring(0, maxExcelDataLength) +
-              "\n\n[DATA TRUNCATED - SHOWING FIRST " +
-              maxExcelDataLength +
-              " CHARACTERS OF " +
-              processedExcelData.length +
-              " TOTAL]"
-            : processedExcelData;
-
-        console.log(
-          "🔧 Excel Processing - Data length:",
-          processedExcelData.length,
-          "Truncated:",
-          truncatedExcelData.length
+        // Import the direct Excel processing service
+        const { processExcelWithOpenAI } = await import(
+          "@/lib/ai/excel-openai-service"
         );
 
-        console.log("🟡 Calling Excel parser agent...");
-        const result = await excelParserAgent.run(`Parse Excel:
-
-Customer: ${message.customerEmail}
-File: ${filename || "Unknown"}
-
-${truncatedExcelData}
-
-Extract items, quantities, units. Use parse-excel-attachment tool.
-ID: ${messageId}`);
-        console.log("🟢 Excel parser agent completed successfully");
-        return result;
+        return await processExcelWithOpenAI(
+          messageId,
+          processedExcelData,
+          message.customerEmail || "",
+          message.customerName,
+          filename || "Unknown",
+          0, // size not available in this context
+          isValidFormat
+        );
       } catch (error) {
-        console.error("🔴 Excel Processing Error:", error);
-
-        // Check if it's a context length error and try with even smaller data
-        const errorMessage =
-          error instanceof Error ? error.message : String(error);
-        if (errorMessage.includes("400") || errorMessage.includes("context")) {
-          console.log("🟡 Retrying with smaller Excel data chunk...");
-
-          try {
-            // Try with just the first 400 characters
-            const verySmallData =
-              processedExcelData.substring(0, 400) +
-              "\n\n[HEAVILY TRUNCATED - SHOWING FIRST 400 CHARACTERS FOR BASIC ANALYSIS]";
-
-            const retryResult =
-              await excelParserAgent.run(`Parse Excel (truncated):
-
-${message.customerEmail}
-${filename || "Unknown"}
-
-${verySmallData}
-
-Extract items. Note truncation.
-ID: ${messageId}`);
-
-            console.log("🟢 Excel parser agent completed with truncated data");
-            return retryResult;
-          } catch (retryError) {
-            console.error(
-              "🔴 Even truncated Excel processing failed:",
-              retryError
-            );
-            await handleOpenAIError(
-              retryError,
-              messageId,
-              "Excel data processing (truncated)"
-            );
-          }
-        } else {
-          await handleOpenAIError(error, messageId, "Excel data processing");
-        }
+        await handleOpenAIError(error, messageId, "Excel data processing");
       }
-    })();
+    });
 
     // Update manual attachment status if this was a manual upload
     if (isManualUpload && attachmentId) {

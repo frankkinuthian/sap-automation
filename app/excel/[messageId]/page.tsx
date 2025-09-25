@@ -11,7 +11,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -25,8 +24,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
-import { useState, useEffect } from "react";
-import { toast } from "sonner";
+import { useState } from "react";
 
 export default function ExcelDataPage() {
   const params = useParams();

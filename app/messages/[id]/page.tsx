@@ -26,6 +26,7 @@ import {
   AlertCircle,
   ExternalLink,
   Home,
+  FileText,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useState, useEffect, useMemo } from "react";
@@ -414,7 +415,21 @@ export default function MessageDetailPage() {
           </div>
 
           <div>
-            <h3 className="text-lg font-semibold mb-3">AI Analysis</h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold">AI Analysis</h3>
+              {memoizedMessage?.aiParsedData?.excelData && (
+                <Link href={`/excel/${memoizedMessage._id}`}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-2"
+                  >
+                    <FileText className="h-4 w-4" />
+                    View Excel Data
+                  </Button>
+                </Link>
+              )}
+            </div>
             <AIDataDisplay
               data={memoizedMessage?.aiParsedData || null}
               messageId={memoizedMessage?._id || ""}

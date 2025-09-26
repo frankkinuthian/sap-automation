@@ -6,6 +6,9 @@ import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { getAIConfig } from "@/lib/ai/config";
+import { getSheetsConfig, isSheetsConfigured } from "@/lib/pricing/sheetsClient";
+import { mapHeadersToIndices } from "@/lib/pricing/headerMapper";
+import { inferUnitFromName, normalizeName, toNumber } from "@/lib/pricing/normalizer";
 
 // Initialize Convex client
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
@@ -1192,6 +1195,156 @@ export const processExcelData = inngest.createFunction(
   }
 );
 
+// Pricing: Refresh the Pricing Snapshot From Google Sheet
+export const RefreshThePricingSnapshotFromGoogleSheet = inngest.createFunction(
+  {
+    id: "Refresh the Pricing Snapshot From Google Sheet",
+    retries: 2,
+  },
+  { event: "Pricing Refresh Was Requested" },
+  async ({ step }) => {
+    // Acquire the Pricing Refresh Lock
+    await step.run("Acquire the Pricing Refresh Lock", async () => {
+      // For now, no-op; single-flight can be added with Convex later
+      return true;
+    });
+
+    // Fetch the Pricing Sheet Values
+    const { values, etag } = await step.run("Fetch the Pricing Sheet Values", async () => {
+      const cfg = getSheetsConfig();
+      if (!isSheetsConfigured()) {
+        throw new Error("Sheets configuration is missing");
+      }
+
+      // Fetch real data from Google Sheets
+      const { fetchPricingSheetValues } = await import("../lib/pricing/sheetsClient");
+      const response = await fetchPricingSheetValues();
+      
+      // Convert SheetsRow[] to string[][]
+      return {
+        values: response.values.map(row => row.values),
+        etag: response.etag
+      };
+    });
+
+    // Map the Sheet Headers to Fields
+    const indices = await step.run("Map the Sheet Headers to Fields", async () => {
+      const headers = (values?.[0] as string[]) || [];
+      const idx = mapHeadersToIndices(headers);
+      const missing: string[] = [];
+      if (idx.skuIdx === -1) missing.push("Item No.");
+      if (idx.nameIdx === -1) missing.push("Item Description");
+      if (idx.currencyIdx === -1)
+        missing.push("Primary Currency - Base Price (currency)");
+      if (idx.unitPriceIdx === -1)
+        missing.push("Primary Currency - Base Price");
+      if (missing.length > 0) {
+        throw new Error(
+          `Required headers missing: ${missing.join(", ")}. Found headers: ${headers.join(", ")}`
+        );
+      }
+      return idx;
+    });
+
+    // Normalize the Pricing Rows
+    const { items, errors } = await step.run(
+      "Normalize the Pricing Rows",
+      async () => {
+        const rows = (values || []).slice(1);
+        const errs: Array<{ row: number; reason: string }> = [];
+        const normalized = rows
+          .map((r: any[], i: number) => {
+            const rowNum = i + 2; // account for header row
+            const rawSku = r[indices.skuIdx];
+            const rawName = r[indices.nameIdx];
+            const rawCurrency = r[indices.currencyIdx];
+            const rawPrice = r[indices.unitPriceIdx];
+
+            const sku = String(rawSku || "").trim();
+            const name = String(rawName || "").trim();
+            const currency = String(rawCurrency || "").trim() || "KES";
+            const unitPrice = toNumber(rawPrice);
+
+            if (!sku) {
+              errs.push({ row: rowNum, reason: "Missing Item No." });
+              return null;
+            }
+            if (!unitPrice || unitPrice <= 0) {
+              errs.push({ row: rowNum, reason: "Invalid unit price" });
+              return null;
+            }
+
+            return {
+              sku,
+              name,
+              normalizedName: normalizeName(name),
+              unit: inferUnitFromName(name),
+              currency,
+              unitPrice,
+            };
+          })
+          .filter(Boolean) as any[];
+
+        return { items: normalized, errors: errs };
+      }
+    );
+
+    // Validate the Pricing Snapshot
+    await step.run("Validate the Pricing Snapshot", async () => {
+      if (items.length === 0) {
+        throw new Error("No pricing rows were produced from the sheet");
+      }
+      return true;
+    });
+
+    // Create the Pricing Snapshot Record
+    const snapshotId = await step.run(
+      "Create the Pricing Snapshot Record",
+      async () => {
+        return await convex.mutation(api.pricing.createPricingSnapshot, {
+          sheetVersion: etag || String(Date.now()),
+          fetchedAt: Date.now(),
+          source: {
+            spreadsheetId: getSheetsConfig().spreadsheetId,
+            tab: getSheetsConfig().pricingTab,
+          },
+          items,
+          errors,
+        });
+      }
+    );
+
+    // Activate the Pricing Snapshot
+    await step.run("Activate the Pricing Snapshot", async () => {
+      await convex.mutation(api.pricing.flipCurrentSnapshot, {
+        snapshotId,
+      });
+      return true;
+    });
+
+    // Release the Pricing Refresh Lock
+    await step.run("Release the Pricing Refresh Lock", async () => true);
+
+    return {
+      success: true,
+      snapshotId,
+      counts: { rowsRead: (values?.length || 0) - 1, items: items.length, errors: errors.length },
+    };
+  }
+);
+
+// Pricing: Schedule the Recurring Pricing Refresh
+export const ScheduleTheRecurringPricingRefresh = inngest.createFunction(
+  { id: "Schedule the Recurring Pricing Refresh" },
+  { cron: "0 */12 * * *" }, // every 12 hours
+  async ({ step }) => {
+    const event = await step.run("Enqueue Scheduled Pricing Refresh", async () => {
+      return await inngest.send({ name: "Pricing Refresh Was Scheduled", data: {} });
+    });
+    return { success: true, eventId: event.ids[0] };
+  }
+);
+
 // Export all functions for registration
 export const functions = [
   processMessage,
@@ -1200,4 +1353,7 @@ export const functions = [
   processExcelAttachmentFromGmail,
   processExcelAttachment,
   processExcelData,
+  RefreshThePricingSnapshotFromGoogleSheet,
+  ScheduleTheRecurringPricingRefresh,
+  // Pricing refresh functions will be appended below
 ];

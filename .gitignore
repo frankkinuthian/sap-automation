@@ -61,6 +61,9 @@ sap-credentials.json
 openai-credentials.json
 deepseek-credentials.json
 
+# Sheets Token
+sheets-token.json
+
 # Any backup or temporary credential files
 *-credentials.json.backup
 *-token.json.backup
@@ -83,3 +86,5 @@ vitest.config.ts
 /scripts
 .kiro
 .vscode
+sap-automation-bruno
+postman

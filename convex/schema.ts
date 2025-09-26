@@ -100,4 +100,43 @@ export default defineSchema({
   })
     .index("by_level", ["level"])
     .index("by_source", ["source"]),
+
+  // Pricing snapshots cached from Google Sheets
+  pricingSnapshots: defineTable({
+    // Sheet metadata
+    sheetVersion: v.optional(v.string()), // hash/etag or timestamp string
+    fetchedAt: v.number(),
+    source: v.object({
+      spreadsheetId: v.string(),
+      tab: v.string(),
+    }),
+
+    // Snapshot content summary
+    itemCount: v.number(),
+    current: v.boolean(),
+
+    // Normalized items for matching & pricing
+    items: v.array(
+      v.object({
+        sku: v.string(),
+        name: v.string(),
+        normalizedName: v.string(),
+        unit: v.string(),
+        currency: v.string(),
+        unitPrice: v.number(),
+      })
+    ),
+
+    // Optional validation errors captured during ingest
+    errors: v.optional(
+      v.array(
+        v.object({
+          row: v.number(),
+          reason: v.string(),
+        })
+      )
+    ),
+  })
+    .index("by_current", ["current"]) // to quickly fetch active snapshot
+    .index("by_fetchedAt", ["fetchedAt"]), // for history & debugging
 });
